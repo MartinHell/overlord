@@ -87,3 +87,21 @@ func UnitDelete(c *gin.Context) {
 
 	c.Status(200)
 }
+
+func UnitSearchByName(c *gin.Context) {
+	var units []models.Unit
+
+	result := initializers.DB.Where("type = ?", c.Param("id")).Find(&units)
+
+	if result.Error != nil {
+		c.Status(400)
+		return
+	} else if result.RowsAffected == 0 {
+		c.Status(404)
+		return
+	} else {
+		c.JSON(200, gin.H{
+			"units": units,
+		})
+	}
+}

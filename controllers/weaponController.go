@@ -83,3 +83,13 @@ func WeaponDelete(c *gin.Context) {
 
 	c.Status(200)
 }
+
+func WeaponSearchByName(c *gin.Context) {
+	var weapon models.Weapon
+
+	initializers.DB.Where("name = ?", c.Param("id")).First(&weapon)
+
+	c.JSON(200, gin.H{
+		"weapon": weapon,
+	})
+}

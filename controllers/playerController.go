@@ -81,17 +81,23 @@ func PlayerDelete(c *gin.Context) {
 	c.Status(200)
 }
 
-func PlayerSearch(c *gin.Context) {
+func PlayerSearchByName(c *gin.Context) {
 	var players []models.Player
 
-	if c.Query("name") != "" {
-		initializers.DB.Where("LOWER(name) LIKE ?", "%"+c.Query("name")+"%").Find(&players)
-	} else if c.Query("ucid") != "" {
-		initializers.DB.Where("ucid = ?", c.Query("ucid")).Find(&players)
-	}
+	initializers.DB.Where("LOWER(name) LIKE ?", c.Param("id")).Find(&players)
 
 	c.JSON(200, gin.H{
 		"players": players,
+	})
+}
+
+func PlayerSearchByUCID(c *gin.Context) {
+	var player models.Player
+
+	initializers.DB.Where("ucid = ?", c.Param("id")).First(&player)
+
+	c.JSON(200, gin.H{
+		"player": player,
 	})
 }
 
