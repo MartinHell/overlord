@@ -24,3 +24,5 @@ go.work
 # godotenv ignore
 .env
 
+# Ignore built binary
+overlord
