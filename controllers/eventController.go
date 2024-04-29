@@ -28,3 +28,11 @@ func EventCreate(c *gin.Context) {
 	// Return player
 	c.JSON(http.StatusOK, gin.H{"message": "Event created successfully!", "event": event})
 }
+
+func EventList(c *gin.Context) {
+	var events []models.Event
+
+	initializers.DB.Find(&events)
+
+	c.JSON(http.StatusOK, gin.H{"events": events})
+}

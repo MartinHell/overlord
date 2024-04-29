@@ -19,8 +19,8 @@ func Route(r *gin.Engine) {
 	r.GET(v1+"/players/ucid/:id", controllers.PlayerSearchByUCID)
 
 	r.POST(v1+"/events", controllers.EventCreate)
-	/* 	r.GET("/events", controllers.EventList)
-	   	r.GET("/events/:id", controllers.EventShow)
+	r.GET(v1+"/events", controllers.EventList)
+	/* 	r.GET("/events/:id", controllers.EventShow)
 	   	r.PUT("/events/:id", controllers.EventUpdate)
 	   	r.DELETE("/events/:id", controllers.EventDelete) */
 

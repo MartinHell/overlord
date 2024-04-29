@@ -4,8 +4,8 @@ import "gorm.io/gorm"
 
 type Event struct {
 	gorm.Model
-	PlayerID uint
+	PlayerID uint `json:"PlayerID"`
 	Event    string
-	TargetID *uint
-	WeaponID *uint
+	TargetID *uint `json:"TargetID"`
+	WeaponID *uint `json:"WeaponID"`
 }
