@@ -12,8 +12,11 @@ RUN go mod download
 # Copy the source from the current directory to the Working Directory inside the container
 COPY . .
 
-# Build the Go app
+# Build the overlord binary
 RUN go build -o overlord .
+
+# Build the overlord-migrate binary
+RUN go build -o overlord-migrate migrate/migrate.go
 
 # Start a new stage from scratch
 FROM alpine:3
@@ -21,11 +24,15 @@ FROM alpine:3
 # Set the Current Working Directory inside the container
 WORKDIR /app
 
-# Copy startup.sh script
-COPY ./scripts/startup.sh /app/startup.sh
+# Copy entrypoint.sh script
+COPY ./scripts/entrypoint.sh /app/entrypoint.sh
+
+# Set entrypoint.sh executable
+RUN chmod +x /app/entrypoint.sh
 
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/overlord /app/overlord
+COPY --from=builder /app/overlord-migrate /app/overlord-migrate
 
 # Command to run the executable
-CMD ["/app/startup.sh"]
+CMD ["/app/entrypoint.sh"]
