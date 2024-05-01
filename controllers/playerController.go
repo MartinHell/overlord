@@ -89,7 +89,7 @@ func DeletePlayer(c *gin.Context) {
 func GetPlayerByName(c *gin.Context) {
 	var players []models.Player
 
-	result := initializers.DB.Where("LOWER(name) LIKE ?", c.Param("id")).Find(&players)
+	result := initializers.DB.Where("name LIKE ?", c.Param("id")).Find(&players)
 
 	if result.Error != nil {
 		log.Printf("Failed to query players: %v", result.Error)
