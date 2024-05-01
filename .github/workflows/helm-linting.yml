@@ -36,6 +36,8 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --target-branch ${{ github.event.repository.default_branch }}
 
+# Disable kind deploy until we've added a way to install postgres as part of this test or have enabled 
+# sqlite as a test database in the app code.
 #      - name: Create kind cluster
 #        if: steps.list-changed.outputs.changed == 'true'
 #        uses: helm/kind-action@v1.10.0
