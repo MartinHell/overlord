@@ -20,10 +20,32 @@
 # Go workspace file
 go.work
 
+### Helm ###
+# Chart dependencies
+**/charts/*.tgz
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# Local History for Visual Studio Code
+.history/
+
+# Built Visual Studio Code Extensions
+*.vsix
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
+.ionide
 
 # godotenv ignore
 .env
 
 # Ignore built binary
-overlord
-overlord-migrate
+./overlord
+./overlord-migrate
