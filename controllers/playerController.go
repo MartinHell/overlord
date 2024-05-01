@@ -1,12 +1,15 @@
 package controllers
 
 import (
+	"log"
+	"net/http"
+
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/models"
 	"github.com/gin-gonic/gin"
 )
 
-func PlayerCreate(c *gin.Context) {
+func CreatePlayer(c *gin.Context) {
 	// Get data off req body
 	var player models.Player
 
@@ -18,37 +21,39 @@ func PlayerCreate(c *gin.Context) {
 	result := initializers.DB.Create(&player)
 
 	if result.Error != nil {
-		c.Status(400)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"player": player,
+		})
 		return
 	}
 
 	// Return player
-	c.JSON(200, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"player": player,
 	})
 }
 
-func PlayerList(c *gin.Context) {
+func GetPlayers(c *gin.Context) {
 	var players []models.Player
 
 	initializers.DB.Find(&players)
 
-	c.JSON(200, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"players": players,
 	})
 }
 
-func PlayerShow(c *gin.Context) {
+func GetPlayer(c *gin.Context) {
 	var player models.Player
 
 	initializers.DB.First(&player, c.Param("id"))
 
-	c.JSON(200, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"player": player,
 	})
 }
 
-func PlayerUpdate(c *gin.Context) {
+func UpdatePlayer(c *gin.Context) {
 	// Find the player we're updating
 	var player models.Player
 
@@ -64,12 +69,12 @@ func PlayerUpdate(c *gin.Context) {
 		UCID: body.UCID,
 	})
 
-	c.JSON(200, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"player": player,
 	})
 }
 
-func PlayerDelete(c *gin.Context) {
+func DeletePlayer(c *gin.Context) {
 	// Find the player we're deleting
 	var player models.Player
 
@@ -78,35 +83,91 @@ func PlayerDelete(c *gin.Context) {
 	// Delete the player
 	initializers.DB.Delete(&player)
 
-	c.Status(200)
+	c.Status(http.StatusOK)
 }
 
-func PlayerSearchByName(c *gin.Context) {
+func GetPlayerByName(c *gin.Context) {
 	var players []models.Player
 
-	initializers.DB.Where("LOWER(name) LIKE ?", c.Param("id")).Find(&players)
+	result := initializers.DB.Where("LOWER(name) LIKE ?", c.Param("id")).Find(&players)
 
-	c.JSON(200, gin.H{
-		"players": players,
-	})
+	if result.Error != nil {
+		log.Printf("Failed to query players: %v", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"players": players,
+		})
+		return
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"players": players,
+		})
+	}
 }
 
-func PlayerSearchByUCID(c *gin.Context) {
+func GetPlayerByUCID(c *gin.Context) {
 	var player models.Player
 
-	initializers.DB.Where("ucid = ?", c.Param("id")).First(&player)
+	resutl := initializers.DB.Where("uc_id = ?", c.Param("id")).First(&player)
 
-	c.JSON(200, gin.H{
-		"player": player,
-	})
+	if resutl.Error != nil {
+		log.Printf("Failed to query player: %v", resutl.Error)
+	}
+
+	if resutl.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"player": player,
+		})
+		return
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"player": player,
+		})
+	}
 }
 
-func PlayerEvents(c *gin.Context) {
+func GetPlayerEvents(c *gin.Context) {
 	var player models.Player
 
-	initializers.DB.Preload("Events").First(&player, c.Param("id"))
+	result := initializers.DB.Preload("Events").First(&player, c.Param("id"))
 
-	c.JSON(200, gin.H{
-		"events": player.Events,
-	})
+	if result.Error != nil {
+		log.Printf("Failed to query player events: %v", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"events": player.Events,
+		})
+		return
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"events": player.Events,
+		})
+	}
+}
+
+func GetPlayerHits(c *gin.Context) {
+	var hits int64
+
+	result := initializers.DB.Model(&models.Event{}).
+		Where("player_id = ? AND event = ?", c.Param("id"), "S_EVENT_HIT").
+		Count(&hits)
+
+	if result.Error != nil {
+		log.Printf("Failed to query event count: %v", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"hits": hits,
+		})
+		return
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"hits": hits,
+		})
+	}
 }

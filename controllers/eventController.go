@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func EventCreate(c *gin.Context) {
+func CreateEvent(c *gin.Context) {
 	// Get data off req body
 	var event models.Event
 
@@ -29,7 +29,7 @@ func EventCreate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Event created successfully!", "event": event})
 }
 
-func EventList(c *gin.Context) {
+func GetEvents(c *gin.Context) {
 	var events []models.Event
 
 	initializers.DB.Find(&events)
