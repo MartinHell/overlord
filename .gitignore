@@ -47,5 +47,5 @@ go.work
 .env
 
 # Ignore built binary
-overlord
-overlord-migrate
+./overlord
+./overlord-migrate
