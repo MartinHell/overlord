@@ -59,6 +59,24 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
+# IngessRoute resource for Traefik v2 ingress controller https://doc.traefik.io/traefik/routing/providers/kubernetes-crd/
+ingressroute:
+  enabled: false
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      port: 80
+  # If you want to add a certificate to the ingressroute, you need to enable cert-manager
+  # and set the issuer and secretName
+  # cert-manager will create a Certificate resource for you
+  # https://cert-manager.io/docs/
+  # https://cert-manager.io/docs/configuration/acme/
+  certmanager:
+    enabled: false
+    issuer: ""
+    tls:
+      secretName: ""
+
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little

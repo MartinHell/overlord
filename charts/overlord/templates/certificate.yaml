@@ -1,0 +1,19 @@
+{{if .Values.ingressroute.certmanager.enabled  }}
+{{- if .Values.ingressroute.certmanager.tls.secretName }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "overlord.fullname" . }}
+  labels:
+    {{- include "overlord.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.ingressroute.certmanager.tls.secretName }}
+  dnsNames:
+    {{- range .Values.ingressroute.hosts }}
+    - {{ .host }}
+    {{- end }}
+  issuerRef:
+    name: {{ .Values.ingressroute.certmanager.issuer }}
+    kind: ClusterIssuer
+{{- end }}
+{{- end }}

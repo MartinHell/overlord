@@ -1,0 +1,27 @@
+{{if values.ingressroute.enabled}}
+apiVersion: networking.k8s.io/v1
+kind: IngressRoute
+metadata:
+  name: {{ include "overlord.fullname" . }}
+  labels:
+    {{- include "overlord.labels" . | nindent 4 }}
+  {{- with .Values.ingressroute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    {{- range .Values.ingressroute.hosts }}
+    - match: Host(`{{ .host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "overlord.fullname" . }}
+          port: {{ .port }}
+    {{- end }}
+  {{- if .Values.ingressroute.certmanager.enabled }}
+  tls:
+    secretName: {{ .Values.ingressroute.certmanager.tls.secretName }}
+  {{- end }}
+{{end}}
