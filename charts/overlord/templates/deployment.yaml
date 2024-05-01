@@ -54,6 +54,24 @@ spec:
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          env:
+          {{- if .Values.overlord.db_url }}
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "overlord.fullname" . }}-secret
+                  key: db_url
+          {{- end }}
+          {{- if .Values.service.port }}
+            - name: PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "overlord.fullname" . }}-secret
+                  key: port
+          {{- end }}
+          {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       {{- with .Values.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
