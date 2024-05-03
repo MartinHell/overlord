@@ -2,14 +2,12 @@ package controllers
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/models"
-	"github.com/gin-gonic/gin"
 )
 
-func CreatePlayer(c *gin.Context) {
+/* func CreatePlayer(c *gin.Context) {
 	// Get data off req body
 	var player models.Player
 
@@ -170,4 +168,30 @@ func GetPlayerHits(c *gin.Context) {
 			"hits": hits,
 		})
 	}
+} */
+
+/* GRPC Work */
+
+// CreatePlayer creates a player in the database
+func CreatePlayer(p *models.Player) error {
+
+	result := initializers.DB.Create(&p)
+	if result.Error != nil {
+		log.Printf("Failed to create player: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
+}
+
+// UpdatePlayer updates a player in the database
+func UpdatePlayer(p *models.Player, up *models.Player) error {
+
+	result := initializers.DB.Model(&p).Updates(up)
+	if result.Error != nil {
+		log.Printf("Failed to update player: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
 }

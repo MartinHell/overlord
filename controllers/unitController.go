@@ -1,14 +1,13 @@
 package controllers
 
 import (
-	"net/http"
+	"log"
 
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/models"
-	"github.com/gin-gonic/gin"
 )
 
-func CreateUnit(c *gin.Context) {
+/* func CreateUnit(c *gin.Context) {
 	// Get data off req body
 	var unit models.Unit
 
@@ -114,4 +113,28 @@ func GetUnitByName(c *gin.Context) {
 			"units": units,
 		})
 	}
+} */
+
+// CreateUnit creates a unit in the database
+func CreateUnit(u *models.Unit) error {
+
+	result := initializers.DB.Create(&u)
+	if result.Error != nil {
+		log.Printf("Failed to create unit: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
+}
+
+// UpdatePlayer updates a unit in the database
+func UpdateUnit(u *models.Unit, uu *models.Unit) error {
+
+	result := initializers.DB.Model(&u).Updates(uu)
+	if result.Error != nil {
+		log.Printf("Failed to update player: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
 }

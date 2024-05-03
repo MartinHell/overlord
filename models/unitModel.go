@@ -11,12 +11,7 @@ type Unit struct {
 	Callsign string
 	common.Coalition
 	Type          string
-	Position      *Position     `gorm:"foreignKey:UnitID"`
-	Group         *common.Group `gorm:"foreignKey:UnitID;references:Id"`
+	Position      *common.Position `gorm:"embedded"`
+	Group         *common.Group    `gorm:"foreignKey:Id;references:Id"`
 	NumberInGroup uint32
-}
-
-type Position struct {
-	UnitID          uint `gorm:"primaryKey;index"`
-	common.Position `gorm:"embedded"`
 }
