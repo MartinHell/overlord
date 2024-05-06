@@ -1,0 +1,27 @@
+// EventHandler handles a specific type of event
+type EventHandler func(event *mission.StreamEventsResponse_Event) error
+
+// NewEventHandler returns a new event handler that performs common operations
+func NewEventHandler() EventHandler {
+    return func(event *mission.StreamEventsResponse_Event) error {
+        // Perform common operations here, such as checking if the event is valid
+        // and updating the database accordingly
+        return nil
+    }
+}
+
+// ShotEvent, BirthEvent, ConnectEvent functions can be refactored to use the new event handler
+func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
+    eh := NewEventHandler()
+    return eh(event)
+}
+
+func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
+    eh := NewEventHandler()
+    return eh(event)
+}
+
+func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
+    eh := NewEventHandler()
+    return eh(event)
+}
