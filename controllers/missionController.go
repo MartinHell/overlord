@@ -8,13 +8,14 @@ import (
 	"google.golang.org/grpc"
 )
 
-func MissionClientController(conn *grpc.ClientConn) (*mission.MissionService_StreamEventsClient, error) {
+type MissionController struct{}
 
-	missionClient := mission.NewMissionServiceClient(conn)
-	stream, err := missionClient.StreamEvents(context.Background(), &mission.StreamEventsRequest{})
-	if err != nil {
-		log.Panicf("Failed to open events stream: %v", err)
-	}
+func (m *MissionController) InitGrpc(conn *grpc.ClientConn) (*mission.MissionService_StreamEventsClient, error) {
+	// Set up the gRPC client here
+	return mission.NewMissionServiceClient(conn), nil
+}
 
-	return &stream, nil
+func (m *MissionController) HandleEvent(event *mission.StreamEventsResponse_Event) error {
+	// Call the event handling function here
+	return handleEvent(event)
 }
