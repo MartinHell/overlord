@@ -130,11 +130,55 @@ func CreateUnit(u *models.Unit) error {
 // UpdatePlayer updates a unit in the database
 func UpdateUnit(u *models.Unit, uu *models.Unit) error {
 
-	result := initializers.DB.Model(&u).Updates(uu)
-	if result.Error != nil {
-		log.Printf("Failed to update player: %v", result.Error)
-		return result.Error
+	hasChanges := false
+
+	if u.Type != uu.Type {
+		u.Type = uu.Type
+		hasChanges = true
+	} /*
+		if u.Callsign != uu.Callsign {
+			u.Callsign = uu.Callsign
+			hasChanges = true
+		}
+		if u.Group != uu.Group {
+			u.Group = uu.Group
+			hasChanges = true
+		}
+		if u.Position.Lat != uu.Position.Lat {
+			u.Position.Lat = uu.Position.Lat
+			hasChanges = true
+		}
+		if u.Position.Lon != uu.Position.Lon {
+			u.Position.Lon = uu.Position.Lon
+			hasChanges = true
+		}
+		if u.Position.Alt != uu.Position.Alt {
+			u.Position.Alt = uu.Position.Alt
+			hasChanges = true
+		}
+		if u.NumberInGroup != uu.NumberInGroup {
+			u.NumberInGroup = uu.NumberInGroup
+			hasChanges = true
+		} */
+
+	if hasChanges {
+		result := initializers.DB.Model(&u).Updates(&u)
+		if result.Error != nil {
+			log.Printf("Failed to update unit: %v", result.Error)
+			return result.Error
+		}
 	}
 
 	return nil
+}
+
+func GetUnit(u *models.Unit) (*models.Unit, error) {
+
+	result := initializers.DB.Where("type = ?", u.Type).First(&u)
+	if result.Error != nil {
+		log.Printf("Failed to get unit: %v", result.Error)
+		return nil, result.Error
+	}
+
+	return u, nil
 }

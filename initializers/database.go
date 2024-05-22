@@ -6,7 +6,6 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -18,7 +17,7 @@ func ConnectToDB() {
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 		PrepareStmt:                              true,
 		DisableForeignKeyConstraintWhenMigrating: true,
-		Logger:                                   logger.Default.LogMode(logger.Info),
+		/* Logger:                                   logger.Default.LogMode(logger.Info), */
 	})
 
 	if err != nil {

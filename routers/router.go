@@ -3,13 +3,12 @@ package routers
 import (
 	"net/http"
 
-	"github.com/MartinHell/overlord/controllers"
 	"github.com/gin-gonic/gin"
 )
 
 func Route(r *gin.Engine) {
 
-	v1 := "/api/v1"
+	/* 	v1 := "/api/v1" */
 	/* 	r.POST(v1+"/players", controllers.CreatePlayer)
 		r.GET(v1+"/players", controllers.GetPlayers)
 		r.GET(v1+"/players/hits/:id", controllers.GetPlayerHits)
@@ -31,11 +30,11 @@ func Route(r *gin.Engine) {
 	   	r.PUT(v1+"/units/:id", controllers.UpdateUnit)
 	   	r.GET(v1+"/units/name/:id", controllers.GetUnitByName) */
 
-	r.POST(v1+"/weapons", controllers.CreateWeapon)
-	r.GET(v1+"/weapons", controllers.GetWeapons)
-	r.GET(v1+"/weapons/:id", controllers.GetWeapon)
-	r.PUT(v1+"/weapons/:id", controllers.UpdateWeapon)
-	r.GET(v1+"/weapons/name/:id", controllers.GetWeaponByName)
+	/* 	r.POST(v1+"/weapons", controllers.CreateWeapon)
+	   	r.GET(v1+"/weapons", controllers.GetWeapons)
+	   	r.GET(v1+"/weapons/:id", controllers.GetWeapon)
+	   	r.PUT(v1+"/weapons/:id", controllers.UpdateWeapon)
+	   	r.GET(v1+"/weapons/name/:id", controllers.GetWeaponByName) */
 
 	r.GET("/healthcheck", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

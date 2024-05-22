@@ -1,10 +1,20 @@
 package models
 
-import "gorm.io/gorm"
+import (
+	"time"
+
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/common"
+	"gorm.io/gorm"
+)
 
 type Weapon struct {
-	gorm.Model
-	Type   string
-	Name   string  `gorm:"unique"`
-	Events []Event `gorm:"foreignKey:WeaponID"`
+	WeaponID  uint `gorm:"primaryKey;autoIncrement;not null;unique;index"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+	Type      string
+}
+
+func (w *Weapon) FromCommonWeapon(r *common.Weapon) {
+	w.Type = r.Type
 }

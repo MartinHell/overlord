@@ -1,58 +1,61 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"github.com/MartinHell/overlord/controllers"
 	"github.com/MartinHell/overlord/initializers"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func init() {
 	initializers.LoadEnvVariables()
 
 	initializers.ConnectToDB()
-}
-
-func connectGRPC() {
-	var addr = os.Getenv("GRPC_SERVER_ADDRESS")
-
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(
-			insecure.NewCredentials(),
-		),
-	}
-
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-
-	conn, err := grpc.DialContext(ctx, addr, opts...)
-	if err != nil {
-		log.Panicf("Failed to connect to server: %v", err)
-	}
-	defer conn.Close()
-
-	log.Print("Connected to server")
-
-	stream, err := controllers.MissionClientController(conn)
-	if err != nil {
-		log.Panicf("Failed to get mission client: %v", err)
-	}
-
-	log.Print("Got mission client")
-	controllers.StreamEvents(*stream)
+	initializers.InitGrpc()
 }
 
 func main() {
-
-	connectGRPC()
 
 	/* r := gin.Default()
 
 	routers.Route(r)
 
 	r.Run() */
+
+	// Create a channel to listen for OS signals
+	sigs := make(chan os.Signal, 1)
+
+	// Channel to wait for the done signal
+	done := make(chan bool, 1)
+
+	// We'll accept graceful shutdowns when quit via SIGINT (Ctrl+C)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	go controllers.StreamEvents()
+
+	defer initializers.GrpcClientConn.Close()
+
+	/* 	var playercache models.PlayerCache
+	   	err := playercache.RefreshPlayersCache()
+	   	if err != nil {
+	   		log.Panicf("Failed to refresh player cache: %v", err)
+	   	}
+	   	player := playercache.FindPlayerByName("Sakura")
+	   	log.Printf("Player: %+v", player) */
+
+	go func() {
+		sig := <-sigs // This will block the program until a signal is received
+		log.Println("Signal received: ", sig)
+		done <- true
+	}()
+
+	log.Println("Server started")
+
+	// Wait here until we receive the done signal
+	<-done
+
+	log.Println("Server stopped")
 }

@@ -2,14 +2,12 @@ package controllers
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/models"
-	"github.com/gin-gonic/gin"
 )
 
-func CreateWeapon(c *gin.Context) {
+/* func CreateWeapon(c *gin.Context) {
 	// Get data off req body
 	var weapon models.Weapon
 
@@ -106,4 +104,56 @@ func GetWeaponByName(c *gin.Context) {
 			"weapon": weapon,
 		})
 	}
+}
+*/
+
+func FindWeaponByType(t string) (*models.Weapon, error) {
+	var weapon models.Weapon
+
+	result := initializers.DB.Where("type = ?", t).First(&weapon)
+
+	if result.Error != nil {
+		log.Printf("Failed to query weapon: %v", result.Error)
+		return nil, result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return nil, nil
+	}
+
+	return &weapon, nil
+
+}
+
+func CreateWeapon(w *models.Weapon) error {
+	// Create weapon
+	result := initializers.DB.Create(w)
+
+	if result.Error != nil {
+		log.Printf("Failed to create weapon: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
+}
+
+func UpdateWeapon(w *models.Weapon, uw *models.Weapon) error {
+
+	hasChanges := false
+
+	if w.Type != uw.Type {
+		w.Type = uw.Type
+		hasChanges = true
+	}
+
+	if hasChanges {
+		result := initializers.DB.Model(&w).Updates(w)
+
+		if result.Error != nil {
+			log.Printf("Failed to update weapon: %v", result.Error)
+			return result.Error
+		}
+	}
+
+	return nil
 }
