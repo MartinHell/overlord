@@ -63,7 +63,7 @@ func (e *Event) CreateEvent() error {
 		if e.Initiator.Type != "" {
 			var initiator Unit
 			log.Printf("Checking or creating Initiator with Type: %s", e.Initiator.Type)
-			if err := tx.Where("type = ?", e.Initiator.Type).FirstOrCreate(&initiator, Unit{Type: e.Initiator.Type}).Error; err != nil {
+			if err := tx.Where(typeQuery, e.Initiator.Type).FirstOrCreate(&initiator, Unit{Type: e.Initiator.Type}).Error; err != nil {
 				log.Printf("Failed to find or create Initiator: %+v, error: %v", initiator, err)
 				return err
 			}
@@ -76,7 +76,7 @@ func (e *Event) CreateEvent() error {
 		if e.Target.Type != "" {
 			var target Unit
 			log.Printf("Checking or creating Target with Type: %s", e.Target.Type)
-			if err := tx.Where("type = ?", e.Target.Type).FirstOrCreate(&target, Unit{Type: e.Target.Type}).Error; err != nil {
+			if err := tx.Where(typeQuery, e.Target.Type).FirstOrCreate(&target, Unit{Type: e.Target.Type}).Error; err != nil {
 				log.Printf("Failed to find or create Target: %+v, error: %v", target, err)
 				return err
 			}
@@ -89,7 +89,7 @@ func (e *Event) CreateEvent() error {
 		if e.TargetWeapon.Type != "" {
 			var targetWeapon Weapon
 			log.Printf("Checking or creating TargetWeapon with Type: %s", e.TargetWeapon.Type)
-			if err := tx.Where("type = ?", e.TargetWeapon.Type).FirstOrCreate(&targetWeapon, Weapon{Type: e.TargetWeapon.Type}).Error; err != nil {
+			if err := tx.Where(typeQuery, e.TargetWeapon.Type).FirstOrCreate(&targetWeapon, Weapon{Type: e.TargetWeapon.Type}).Error; err != nil {
 				log.Printf("Failed to find or create TargetWeapon: %+v, error: %v", targetWeapon, err)
 				return err
 			}
@@ -102,7 +102,7 @@ func (e *Event) CreateEvent() error {
 		if e.Weapon.Type != "" {
 			var weapon Weapon
 			log.Printf("Checking or creating Weapon with Type: %s", e.Weapon.Type)
-			if err := tx.Where("type = ?", e.Weapon.Type).FirstOrCreate(&weapon, Weapon{Type: e.Weapon.Type}).Error; err != nil {
+			if err := tx.Where(typeQuery, e.Weapon.Type).FirstOrCreate(&weapon, Weapon{Type: e.Weapon.Type}).Error; err != nil {
 				log.Printf("Failed to find or create Weapon: %+v, error: %v", weapon, err)
 				return err
 			}
