@@ -28,6 +28,13 @@ type Player struct {
 	//UnitID     uint
 }
 
+var aiPlayerName = "AI-Unit"
+
+var AIPlayer = Player{
+	PlayerName: &aiPlayerName,
+	UCID:       "0",
+}
+
 func (p *Player) GetPlayerFromDB() error {
 	// Check if player is in DB
 	var playerCache PlayerCache

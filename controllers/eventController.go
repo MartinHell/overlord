@@ -140,10 +140,7 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 		connectedPlayer.GetPlayerUcid()
 	} else {
 		// If no player is attached to the unit, it's an AI unit
-		name := "AI-Unit"
-		connectedPlayer.PlayerName = &name
-		connectedPlayer.UCID = "0"
-		connectedPlayer.PlayerID = 0
+		connectedPlayer = models.AIPlayer
 	}
 
 	// Create event in DB
@@ -183,10 +180,7 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 		connectedPlayer.GetPlayerUcid()
 	} else {
 		// If no player is attached to the unit, it's an AI unit
-		name := "AI-Unit"
-		connectedPlayer.PlayerName = &name
-		connectedPlayer.UCID = "0"
-		connectedPlayer.PlayerID = 0
+		connectedPlayer = models.AIPlayer
 	}
 
 	// Create event in DB
@@ -237,12 +231,8 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 		name := "AI-Unit"
 		connectedPlayer.PlayerName = &name
 		if !connectedPlayer.CheckIfPlayerInDB() {
-			aiPlayer := models.Player{
-				PlayerName: &name,
-				UCID:       "0",
-			}
 
-			err := aiPlayer.CreatePlayer()
+			err := models.AIPlayer.CreatePlayer()
 			if err != nil {
 				log.Printf("Failed to create player: %v", err)
 				return err
