@@ -196,9 +196,11 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 	if p.Target != nil {
 		if p.Target.GetUnit() != nil {
 			target.FromCommonUnit(p.Target.GetUnit())
-		}
-		if p.Target.GetWeapon() != nil {
+		} else if p.Target.GetWeapon() != nil {
 			targetWeapon.Type = p.Target.GetWeapon().GetType()
+		} else {
+			// TODO: Handle more target types
+			log.Printf("Unknown target type: %v", p.Target)
 		}
 	}
 
