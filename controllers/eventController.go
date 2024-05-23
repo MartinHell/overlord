@@ -36,7 +36,7 @@ import (
 func GetEvents(c *gin.Context) {
 	var events []models.Event
 
-	initializers.DB.Find(&events)
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Find(&events)
 
 	c.JSON(http.StatusOK, gin.H{"events": events})
 }
@@ -44,7 +44,7 @@ func GetEvents(c *gin.Context) {
 func GetEvent(c *gin.Context) {
 	var event models.Event
 
-	initializers.DB.First(&event, c.Param("id"))
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").First(&event, c.Param("id"))
 
 	c.JSON(http.StatusOK, gin.H{
 		"event": event,
