@@ -222,7 +222,7 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 		if !connectedPlayer.CheckIfPlayerInDB() {
 			err := connectedPlayer.CreatePlayer()
 			if err != nil {
-				log.Printf("Failed to create player: %v", err)
+				log.Printf(logCreatePlayer, err)
 				return err
 			}
 		}
@@ -232,7 +232,7 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 
 			err := models.AIPlayer.CreatePlayer()
 			if err != nil {
-				log.Printf("Failed to create player: %v", err)
+				log.Printf(logCreatePlayer, err)
 				return err
 			}
 		}
@@ -279,7 +279,7 @@ func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
 	if p.GetName(); !connectedPlayer.CheckIfPlayerInDB() {
 		err := connectedPlayer.CreatePlayer()
 		if err != nil {
-			log.Printf("Failed to create player: %v", err)
+			log.Printf(logCreatePlayer, err)
 			return err
 		}
 	} else { // If player is in DB, update player

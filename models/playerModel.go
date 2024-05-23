@@ -43,7 +43,7 @@ func (p *Player) GetPlayerFromDB() error {
 	playerLookup := *playerCache.FindPlayerByName(*p.PlayerName)
 
 	if playerLookup.GetUcid() != "" {
-		result := initializers.DB.Where("uc_id = ?", playerLookup.GetUcid()).First(p)
+		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(p)
 		if result.Error != nil && result.Error.Error() != "record not found" {
 			log.Printf("Failed to find player: %v", result.Error)
 			return result.Error
@@ -59,7 +59,7 @@ func (p *Player) GetPlayerFromDB() error {
 
 func (p *Player) GetPlayerByUCID(ucid string) error {
 
-	result := initializers.DB.Where("uc_id = ?", ucid).First(&p)
+	result := initializers.DB.Where(ucidQuery, ucid).First(&p)
 	if result.Error != nil {
 		log.Printf("Failed to get player: %v", result.Error)
 		return result.Error
@@ -103,7 +103,7 @@ func (p *Player) UpdatePlayer(up *Player) error {
 		} */
 
 	if hasChanges {
-		result := initializers.DB.Model(&p).Where("uc_id = ?", p.UCID).Updates(p)
+		result := initializers.DB.Model(&p).Where(ucidQuery, p.UCID).Updates(p)
 		if result.Error != nil {
 			log.Printf("Failed to update player: %v", result.Error)
 			return result.Error
@@ -122,7 +122,7 @@ func (p *Player) CheckIfPlayerInDB() bool {
 	playerLookup := *playerCache.FindPlayerByName(*p.PlayerName)
 
 	if playerLookup.GetUcid() != "" {
-		result := initializers.DB.Where("uc_id = ?", playerLookup.GetUcid()).First(&player)
+		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(&player)
 		if result.Error != nil && result.Error.Error() != "record not found" {
 			log.Printf("Failed to find player: %v", result.Error)
 		}
