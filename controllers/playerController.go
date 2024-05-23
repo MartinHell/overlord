@@ -9,30 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func CreatePlayer(c *gin.Context) {
-	// Get data off req body
-	var player models.Player
-
-	c.Bind(&player)
-
-	// Validate data
-
-	// Create player
-	result := initializers.DB.Create(&player)
-
-	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"player": player,
-		})
-		return
-	}
-
-	// Return player
-	c.JSON(http.StatusOK, gin.H{
-		"player": player,
-	})
-}
-
 func GetPlayers(c *gin.Context) {
 	var players []models.Player
 
@@ -51,39 +27,6 @@ func GetPlayer(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"player": player,
 	})
-}
-
-func UpdatePlayer(c *gin.Context) {
-	// Find the player we're updating
-	var player models.Player
-
-	initializers.DB.First(&player, c.Param("id"))
-
-	// Get data off req body
-	var body models.Player
-	c.Bind(&body)
-
-	// Update the player
-	initializers.DB.Model(&player).Updates(models.Player{
-		Name: body.Name,
-		UCID: body.UCID,
-	})
-
-	c.JSON(http.StatusOK, gin.H{
-		"player": player,
-	})
-}
-
-func DeletePlayer(c *gin.Context) {
-	// Find the player we're deleting
-	var player models.Player
-
-	initializers.DB.First(&player, c.Param("id"))
-
-	// Delete the player
-	initializers.DB.Delete(&player)
-
-	c.Status(http.StatusOK)
 }
 
 func GetPlayerByName(c *gin.Context) {
@@ -129,9 +72,9 @@ func GetPlayerByUCID(c *gin.Context) {
 }
 
 func GetPlayerEvents(c *gin.Context) {
-	var player models.Player
 
-	result := initializers.DB.Preload("Events").First(&player, c.Param("id"))
+	var events []models.Event
+	result := initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("player_id = ?", c.Param("id")).Find(&events)
 
 	if result.Error != nil {
 		log.Printf("Failed to query player events: %v", result.Error)
@@ -139,17 +82,18 @@ func GetPlayerEvents(c *gin.Context) {
 
 	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{
-			"events": player.Events,
+			"events": events,
 		})
 		return
 	} else {
 		c.JSON(http.StatusOK, gin.H{
-			"events": player.Events,
+			"events": events,
 		})
 	}
 }
 
-func GetPlayerHits(c *gin.Context) {
+// Implement this later
+/* func GetPlayerHits(c *gin.Context) {
 	var hits int64
 
 	result := initializers.DB.Model(&models.Event{}).
@@ -171,3 +115,4 @@ func GetPlayerHits(c *gin.Context) {
 		})
 	}
 }
+*/

@@ -11,5 +11,6 @@ func init() {
 }
 
 func main() {
-	initializers.DB.Debug().AutoMigrate(&models.Event{}, &models.Player{}, &models.Unit{}, &models.Weapon{})
+	/* initializers.DB.Debug().AutoMigrate(&models.Event{}, &models.Player{}, &models.Unit{}, &models.Weapon{}) */
+	initializers.DB.Debug().AutoMigrate(&models.Player{}, &models.Unit{}, &models.Weapon{}, &models.Event{})
 }

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/MartinHell/overlord/initializers"
@@ -8,31 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func CreateUnit(c *gin.Context) {
-	// Get data off req body
-	var unit models.Unit
-
-	c.Bind(&unit)
-
-	// Validate data
-
-	// Create unit
-	result := initializers.DB.Create(&unit)
-
-	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"unit": unit,
-		})
-		return
-	}
-
-	// Return unit
-	c.JSON(http.StatusOK, gin.H{
-		"player": unit,
-	})
-}
-
-func GetUnits(c *gin.Context) {
+func ApiGetUnits(c *gin.Context) {
 	var units []models.Unit
 
 	initializers.DB.Find(&units)
@@ -42,7 +19,7 @@ func GetUnits(c *gin.Context) {
 	})
 }
 
-func GetUnit(c *gin.Context) {
+func ApiGetUnit(c *gin.Context) {
 	var unit models.Unit
 
 	initializers.DB.First(&unit, c.Param("id"))
@@ -52,47 +29,7 @@ func GetUnit(c *gin.Context) {
 	})
 }
 
-func UpdateUnit(c *gin.Context) {
-	// Find the unit we're updating
-	var unit models.Unit
-
-	initializers.DB.First(&unit, c.Param("id"))
-
-	// Get data off req body
-	var body models.Unit
-	c.Bind(&body)
-
-	// Update the unit
-	result := initializers.DB.Model(&unit).Updates(
-		models.Unit{
-			Type:     body.Type,
-			Category: body.Category,
-		},
-	)
-
-	if result.Error != nil {
-		c.Status(400)
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"unit": unit,
-	})
-}
-
-func DeleteUnit(c *gin.Context) {
-	// Find the unit we're deleting
-	var unit models.Unit
-
-	initializers.DB.First(&unit, c.Param("id"))
-
-	// Delete the unit
-	initializers.DB.Delete(&unit)
-
-	c.Status(http.StatusOK)
-}
-
-func GetUnitByName(c *gin.Context) {
+func ApiGetUnitByName(c *gin.Context) {
 	var units []models.Unit
 
 	result := initializers.DB.Where("type = ?", c.Param("id")).Find(&units)
@@ -114,4 +51,48 @@ func GetUnitByName(c *gin.Context) {
 			"units": units,
 		})
 	}
+}
+
+// CreateUnit creates a unit in the database
+func CreateUnit(u *models.Unit) error {
+
+	result := initializers.DB.Create(&u)
+	if result.Error != nil {
+		log.Printf("Failed to create unit: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
+}
+
+// UpdatePlayer updates a unit in the database
+func UpdateUnit(u *models.Unit, uu *models.Unit) error {
+
+	hasChanges := false
+
+	if u.Type != uu.Type {
+		u.Type = uu.Type
+		hasChanges = true
+	}
+
+	if hasChanges {
+		result := initializers.DB.Model(&u).Updates(&u)
+		if result.Error != nil {
+			log.Printf("Failed to update unit: %v", result.Error)
+			return result.Error
+		}
+	}
+
+	return nil
+}
+
+func GetUnit(u *models.Unit) (*models.Unit, error) {
+
+	result := initializers.DB.Where("type = ?", u.Type).First(&u)
+	if result.Error != nil {
+		log.Printf("Failed to get unit: %v", result.Error)
+		return nil, result.Error
+	}
+
+	return u, nil
 }

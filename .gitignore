@@ -49,3 +49,4 @@ go.work
 # Ignore built binary
 ./overlord
 ./overlord-migrate
+.aider*
