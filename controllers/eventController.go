@@ -150,7 +150,7 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 
 	event := models.Event{}
 
-	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil)
+	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil, nil)
 
 	event.CreateEvent()
 
@@ -171,32 +171,40 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 
 	// Check if player already exists in DB
 	var connectedPlayer models.Player
+	initiator := models.Unit{}
 
-	u := p.Initiator.GetUnit()
+	if p.Initiator != nil {
+		u := p.Initiator.GetUnit()
 
-	if u.GetPlayerName() != "" {
-		connectedPlayer.PlayerName = u.PlayerName
+		if u.GetPlayerName() != "" {
+			connectedPlayer.PlayerName = u.PlayerName
 
-		connectedPlayer.GetPlayerUcid()
-	} else {
-		// If no player is attached to the unit, it's an AI unit
-		connectedPlayer = models.AIPlayer
+			connectedPlayer.GetPlayerUcid()
+		} else {
+			// If no player is attached to the unit, it's an AI unit
+			connectedPlayer = models.AIPlayer
+		}
+
+		initiator.FromCommonUnit(u)
 	}
 
 	// Create event in DB
-	initiator := models.Unit{}
-
-	initiator.FromCommonUnit(u)
 
 	// Create target
 	target := models.Unit{}
+	targetWeapon := models.Weapon{}
 	if p.Target != nil {
-		target.FromCommonUnit(p.Target.GetUnit())
+		if p.Target.GetUnit() != nil {
+			target.FromCommonUnit(p.Target.GetUnit())
+		}
+		if p.Target.GetWeapon() != nil {
+			targetWeapon.Type = p.Target.GetWeapon().GetType()
+		}
 	}
 
 	event := models.Event{}
 
-	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target)
+	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target, &targetWeapon)
 
 	event.CreateEvent()
 

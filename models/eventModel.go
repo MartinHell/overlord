@@ -26,15 +26,20 @@ type Event struct {
 	Target          Unit `gorm:"foreignKey:TargetID;references:UnitID"`
 	WeaponID        *uint
 	Weapon          Weapon `gorm:"foreignKey:WeaponID;references:WeaponID"`
+	TargetWeaponID  *uint
+	TargetWeapon    Weapon `gorm:"foreignKey:TargetWeaponID;references:WeaponID"`
 }
 
-func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Unit) {
+func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Unit, tw *Weapon) {
 	e.Event = eventType
 	e.Player = *p
 	e.Initiator = *i
 	e.Weapon = *w
 	if t != nil {
 		e.Target = *t
+	}
+	if tw != nil {
+		e.TargetWeapon = *tw
 	}
 }
 
@@ -80,6 +85,19 @@ func (e *Event) CreateEvent() error {
 			e.TargetID = nil
 		}
 
+		// Ensure TargetWeapon exists or create it if specified
+		if e.TargetWeapon.Type != "" {
+			var targetWeapon Weapon
+			log.Printf("Checking or creating TargetWeapon with Type: %s", e.TargetWeapon.Type)
+			if err := tx.Where("type = ?", e.TargetWeapon.Type).FirstOrCreate(&targetWeapon, Weapon{Type: e.TargetWeapon.Type}).Error; err != nil {
+				log.Printf("Failed to find or create TargetWeapon: %+v, error: %v", targetWeapon, err)
+				return err
+			}
+			e.TargetWeaponID = &targetWeapon.WeaponID
+		} else {
+			e.TargetWeaponID = nil
+		}
+
 		// Ensure Weapon exists or create it
 		if e.Weapon.Type != "" {
 			var weapon Weapon
@@ -100,6 +118,7 @@ func (e *Event) CreateEvent() error {
 			InitiatorUnitID: e.InitiatorUnitID,
 			TargetID:        e.TargetID,
 			WeaponID:        e.WeaponID,
+			TargetWeaponID:  e.TargetWeaponID,
 		}
 
 		log.Printf("Creating Event: %+v", event)
