@@ -228,9 +228,7 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 		}
 	} else {
 		// If no player is attached to the unit, it's an AI unit
-		name := "AI-Unit"
-		connectedPlayer.PlayerName = &name
-		if !connectedPlayer.CheckIfPlayerInDB() {
+		if !models.AIPlayer.CheckIfPlayerInDB() {
 
 			err := models.AIPlayer.CreatePlayer()
 			if err != nil {
