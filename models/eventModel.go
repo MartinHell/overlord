@@ -17,14 +17,14 @@ import (
 
 type Event struct {
 	gorm.Model
-	PlayerID        uint
-	Player          Player `gorm:"foreignKey:PlayerID;regerences:PlayerID"`
+	PlayerID        *uint
+	Player          Player `gorm:"foreignKey:PlayerID;references:PlayerID"`
 	Event           string
-	InitiatorUnitID uint
+	InitiatorUnitID *uint
 	Initiator       Unit `gorm:"foreignKey:InitiatorUnitID;references:UnitID"`
-	TargetID        uint
+	TargetID        *uint
 	Target          Unit `gorm:"foreignKey:TargetID;references:UnitID"`
-	WeaponID        uint
+	WeaponID        *uint
 	Weapon          Weapon `gorm:"foreignKey:WeaponID;references:WeaponID"`
 }
 
@@ -38,74 +38,76 @@ func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w
 	}
 }
 
-// CreatePlayer creates a player in the database
+// CreateEvent creates an event in the database
 func (e *Event) CreateEvent() error {
-
 	return initializers.DB.Transaction(func(tx *gorm.DB) error {
-		// Check if the Player already exists, otherwise create it
-		var player Player
-		log.Printf("Player: %+v", e.Player)
-		if err := tx.Where("uc_id = ?", e.Player.UCID).First(&player).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				// Create the player if not found
-				if err := tx.Create(&e.Player).Error; err != nil {
-					return err
-				}
-			} else {
+		// Ensure Player exists or create it
+		if e.Player.UCID != "" {
+			var player Player
+			log.Printf("Checking or creating Player with UCID: %s", e.Player.UCID)
+			if err := tx.Where("uc_id = ?", e.Player.UCID).FirstOrCreate(&player, Player{UCID: e.Player.UCID, PlayerName: e.Player.PlayerName}).Error; err != nil {
+				log.Printf("Failed to find or create Player: %+v, error: %v", player, err)
 				return err
 			}
+			e.PlayerID = &player.PlayerID
 		} else {
-			log.Printf("PlayerID: %+v", player)
-			e.PlayerID = player.PlayerID
+			e.PlayerID = nil
 		}
 
-		// Check if the Initiator already exists, otherwise create it
-		var initiator Unit
-		if err := tx.Where("type = ?", e.Initiator.Type).First(&initiator).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				// Create the initiator if not found
-				if err := tx.Create(&e.Initiator).Error; err != nil {
-					return err
-				}
+		// Ensure Initiator exists or create it
+		if e.Initiator.Type != "" {
+			var initiator Unit
+			log.Printf("Checking or creating Initiator with Type: %s", e.Initiator.Type)
+			if err := tx.Where("type = ?", e.Initiator.Type).FirstOrCreate(&initiator, Unit{Type: e.Initiator.Type}).Error; err != nil {
+				log.Printf("Failed to find or create Initiator: %+v, error: %v", initiator, err)
+				return err
 			}
+			e.InitiatorUnitID = &initiator.UnitID
 		} else {
-			e.InitiatorUnitID = initiator.UnitID
+			e.InitiatorUnitID = nil
 		}
 
-		// Check if the Target already exists, otherwise create it
-		if e.Target != (Unit{}) {
+		// Ensure Target exists or create it if specified
+		if e.Target.Type != "" {
 			var target Unit
-			if err := tx.Where("type = ?", e.Target.Type).First(&target).Error; err != nil {
-				if err == gorm.ErrRecordNotFound {
-					// Create the target if not found
-					if err := tx.Create(&e.Target).Error; err != nil {
-						return err
-					}
-				}
-			} else {
-				e.TargetID = target.UnitID
+			log.Printf("Checking or creating Target with Type: %s", e.Target.Type)
+			if err := tx.Where("type = ?", e.Target.Type).FirstOrCreate(&target, Unit{Type: e.Target.Type}).Error; err != nil {
+				log.Printf("Failed to find or create Target: %+v, error: %v", target, err)
+				return err
 			}
+			e.TargetID = &target.UnitID
+		} else {
+			e.TargetID = nil
 		}
 
-		// Check if the Weapon already exists, otherwise create it
-		var weapon Weapon
-		if err := tx.Where("type = ?", e.Weapon.Type).First(&weapon).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				// Create the weapon if not found
-				if err := tx.Create(&e.Weapon).Error; err != nil {
-					return err
-				}
+		// Ensure Weapon exists or create it
+		if e.Weapon.Type != "" {
+			var weapon Weapon
+			log.Printf("Checking or creating Weapon with Type: %s", e.Weapon.Type)
+			if err := tx.Where("type = ?", e.Weapon.Type).FirstOrCreate(&weapon, Weapon{Type: e.Weapon.Type}).Error; err != nil {
+				log.Printf("Failed to find or create Weapon: %+v, error: %v", weapon, err)
+				return err
 			}
+			e.WeaponID = &weapon.WeaponID
 		} else {
-			e.WeaponID = weapon.WeaponID
+			e.WeaponID = nil
 		}
 
 		// Create the event
-		if err := tx.Create(&e).Error; err != nil {
+		event := Event{
+			PlayerID:        e.PlayerID,
+			Event:           e.Event,
+			InitiatorUnitID: e.InitiatorUnitID,
+			TargetID:        e.TargetID,
+			WeaponID:        e.WeaponID,
+		}
+
+		log.Printf("Creating Event: %+v", event)
+		if err := tx.Create(&event).Error; err != nil {
+			log.Printf("Failed to create Event: %+v, error: %v", event, err)
 			return err
 		}
 
 		return nil
 	})
-
 }

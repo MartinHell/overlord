@@ -1,9 +1,12 @@
 package models
 
 import (
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/common"
+	"github.com/MartinHell/overlord/initializers"
 	"gorm.io/gorm"
 )
 
@@ -17,4 +20,60 @@ type Weapon struct {
 
 func (w *Weapon) FromCommonWeapon(r *common.Weapon) {
 	w.Type = r.Type
+}
+
+func (w *Weapon) FindWeaponByType() error {
+
+	result := initializers.DB.Where("type = ?", w.Type).First(&w)
+
+	if result.Error != nil {
+		log.Printf("Failed to query weapon: %v", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("Weapon not found")
+	}
+
+	return nil
+
+}
+
+func (w *Weapon) CreateWeapon() error {
+	// Query if weapon already exists
+	if err := w.FindWeaponByType(); err.Error() == "Weapon not found" {
+		// Create weapon
+		result := initializers.DB.Create(w)
+
+		if result.Error != nil {
+			log.Printf("Failed to create weapon: %v", result.Error)
+			return result.Error
+		}
+
+		return nil
+	} else {
+		return nil
+	}
+
+}
+
+func (w *Weapon) UpdateWeapon(uw *Weapon) error {
+
+	hasChanges := false
+
+	if w.Type != uw.Type {
+		w.Type = uw.Type
+		hasChanges = true
+	}
+
+	if hasChanges {
+		result := initializers.DB.Model(&w).Updates(w)
+
+		if result.Error != nil {
+			log.Printf("Failed to update weapon: %v", result.Error)
+			return result.Error
+		}
+	}
+
+	return nil
 }

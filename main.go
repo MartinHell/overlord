@@ -8,6 +8,8 @@ import (
 
 	"github.com/MartinHell/overlord/controllers"
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/routers"
+	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -19,11 +21,9 @@ func init() {
 
 func main() {
 
-	/* r := gin.Default()
+	r := gin.Default()
 
 	routers.Route(r)
-
-	r.Run() */
 
 	// Create a channel to listen for OS signals
 	sigs := make(chan os.Signal, 1)
@@ -35,6 +35,8 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	go controllers.StreamEvents()
+
+	go r.Run()
 
 	defer initializers.GrpcClientConn.Close()
 
