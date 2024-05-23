@@ -50,3 +50,6 @@ go.work
 ./overlord
 ./overlord-migrate
 .aider*
+sqlite.db
+overlord
+overlord-migrate
