@@ -207,11 +207,11 @@ func (p *Player) GetPlayerUcid() string {
 // Find Player in cache based on Name
 func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetPlayerInfo {
 
-	if name == "AI-Unit" {
+	if name == *AIPlayer.PlayerName {
 		player := &net.GetPlayersResponse_GetPlayerInfo{
 			Id:   0,
-			Name: "AI-Unit",
-			Ucid: "0",
+			Name: *AIPlayer.PlayerName,
+			Ucid: AIPlayer.UCID,
 		}
 		return player
 	}
