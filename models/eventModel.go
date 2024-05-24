@@ -45,69 +45,36 @@ func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w
 // CreateEvent creates an event in the database
 func (e *Event) CreateEvent() error {
 	return initializers.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+
 		// Ensure Player exists or create it
-		if e.Player.UCID != "" {
-			var player Player
-			logs.Sugar.Debugf("Checking or creating Player with UCID: %s", e.Player.UCID)
-			if err := tx.Where("uc_id = ?", e.Player.UCID).FirstOrCreate(&player, Player{UCID: e.Player.UCID, PlayerName: e.Player.PlayerName}).Error; err != nil {
-				logs.Sugar.Errorf("Failed to find or create Player: %+v, error: %v", player, err)
-				return err
-			}
-			e.PlayerID = &player.PlayerID
-		} else {
-			e.PlayerID = nil
+		e.PlayerID, err = ensurePlayer(tx, e.Player)
+		if err != nil {
+			return err
 		}
 
 		// Ensure Initiator exists or create it
-		if e.Initiator.Type != "" {
-			var initiator Unit
-			logs.Sugar.Debugf("Checking or creating Initiator with Type: %s", e.Initiator.Type)
-			if err := tx.Where(typeQuery, e.Initiator.Type).FirstOrCreate(&initiator, Unit{Type: e.Initiator.Type}).Error; err != nil {
-				logs.Sugar.Errorf("Failed to find or create Initiator: %+v, error: %v", initiator, err)
-				return err
-			}
-			e.InitiatorUnitID = &initiator.UnitID
-		} else {
-			e.InitiatorUnitID = nil
+		e.InitiatorUnitID, err = ensureUnit(tx, e.Initiator, "Initiator")
+		if err != nil {
+			return err
 		}
 
 		// Ensure Target exists or create it if specified
-		if e.Target.Type != "" {
-			var target Unit
-			logs.Sugar.Debugf("Checking or creating Target with Type: %s", e.Target.Type)
-			if err := tx.Where(typeQuery, e.Target.Type).FirstOrCreate(&target, Unit{Type: e.Target.Type}).Error; err != nil {
-				logs.Sugar.Errorf("Failed to find or create Target: %+v, error: %v", target, err)
-				return err
-			}
-			e.TargetID = &target.UnitID
-		} else {
-			e.TargetID = nil
+		e.TargetID, err = ensureUnit(tx, e.Target, "Target")
+		if err != nil {
+			return err
 		}
 
 		// Ensure TargetWeapon exists or create it if specified
-		if e.TargetWeapon.Type != "" {
-			var targetWeapon Weapon
-			logs.Sugar.Debugf("Checking or creating TargetWeapon with Type: %s", e.TargetWeapon.Type)
-			if err := tx.Where(typeQuery, e.TargetWeapon.Type).FirstOrCreate(&targetWeapon, Weapon{Type: e.TargetWeapon.Type}).Error; err != nil {
-				logs.Sugar.Errorf("Failed to find or create TargetWeapon: %+v, error: %v", targetWeapon, err)
-				return err
-			}
-			e.TargetWeaponID = &targetWeapon.WeaponID
-		} else {
-			e.TargetWeaponID = nil
+		e.TargetWeaponID, err = ensureWeapon(tx, e.TargetWeapon, "TargetWeapon")
+		if err != nil {
+			return err
 		}
 
 		// Ensure Weapon exists or create it
-		if e.Weapon.Type != "" {
-			var weapon Weapon
-			logs.Sugar.Debugf("Checking or creating Weapon with Type: %s", e.Weapon.Type)
-			if err := tx.Where(typeQuery, e.Weapon.Type).FirstOrCreate(&weapon, Weapon{Type: e.Weapon.Type}).Error; err != nil {
-				logs.Sugar.Errorf("Failed to find or create Weapon: %+v, error: %v", weapon, err)
-				return err
-			}
-			e.WeaponID = &weapon.WeaponID
-		} else {
-			e.WeaponID = nil
+		e.WeaponID, err = ensureWeapon(tx, e.Weapon, "Weapon")
+		if err != nil {
+			return err
 		}
 
 		// Create the event
@@ -128,4 +95,46 @@ func (e *Event) CreateEvent() error {
 
 		return nil
 	})
+}
+
+func ensurePlayer(tx *gorm.DB, player Player) (*uint, error) {
+	if player.UCID == "" {
+		return nil, nil
+	}
+
+	var existingPlayer Player
+	logs.Sugar.Debugf("Checking or creating Player with UCID: %s", player.UCID)
+	if err := tx.Where("uc_id = ?", player.UCID).FirstOrCreate(&existingPlayer, Player{UCID: player.UCID, PlayerName: player.PlayerName}).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find or create Player: %+v, error: %v", existingPlayer, err)
+		return nil, err
+	}
+	return &existingPlayer.PlayerID, nil
+}
+
+func ensureUnit(tx *gorm.DB, unit Unit, unitType string) (*uint, error) {
+	if unit.Type == "" {
+		return nil, nil
+	}
+
+	var existingUnit Unit
+	logs.Sugar.Debugf("Checking or creating %s with Type: %s", unitType, unit.Type)
+	if err := tx.Where("type = ?", unit.Type).FirstOrCreate(&existingUnit, Unit{Type: unit.Type}).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find or create %s: %+v, error: %v", unitType, existingUnit, err)
+		return nil, err
+	}
+	return &existingUnit.UnitID, nil
+}
+
+func ensureWeapon(tx *gorm.DB, weapon Weapon, weaponType string) (*uint, error) {
+	if weapon.Type == "" {
+		return nil, nil
+	}
+
+	var existingWeapon Weapon
+	logs.Sugar.Debugf("Checking or creating %s with Type: %s", weaponType, weapon.Type)
+	if err := tx.Where("type = ?", weapon.Type).FirstOrCreate(&existingWeapon, Weapon{Type: weapon.Type}).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find or create %s: %+v, error: %v", weaponType, existingWeapon, err)
+		return nil, err
+	}
+	return &existingWeapon.WeaponID, nil
 }
