@@ -1,9 +1,8 @@
 package models
 
 import (
-	"log"
-
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
 	"gorm.io/gorm"
 )
 
@@ -49,9 +48,9 @@ func (e *Event) CreateEvent() error {
 		// Ensure Player exists or create it
 		if e.Player.UCID != "" {
 			var player Player
-			log.Printf("Checking or creating Player with UCID: %s", e.Player.UCID)
+			logs.Sugar.Debugf("Checking or creating Player with UCID: %s", e.Player.UCID)
 			if err := tx.Where("uc_id = ?", e.Player.UCID).FirstOrCreate(&player, Player{UCID: e.Player.UCID, PlayerName: e.Player.PlayerName}).Error; err != nil {
-				log.Printf("Failed to find or create Player: %+v, error: %v", player, err)
+				logs.Sugar.Errorf("Failed to find or create Player: %+v, error: %v", player, err)
 				return err
 			}
 			e.PlayerID = &player.PlayerID
@@ -62,9 +61,9 @@ func (e *Event) CreateEvent() error {
 		// Ensure Initiator exists or create it
 		if e.Initiator.Type != "" {
 			var initiator Unit
-			log.Printf("Checking or creating Initiator with Type: %s", e.Initiator.Type)
+			logs.Sugar.Debugf("Checking or creating Initiator with Type: %s", e.Initiator.Type)
 			if err := tx.Where(typeQuery, e.Initiator.Type).FirstOrCreate(&initiator, Unit{Type: e.Initiator.Type}).Error; err != nil {
-				log.Printf("Failed to find or create Initiator: %+v, error: %v", initiator, err)
+				logs.Sugar.Errorf("Failed to find or create Initiator: %+v, error: %v", initiator, err)
 				return err
 			}
 			e.InitiatorUnitID = &initiator.UnitID
@@ -75,9 +74,9 @@ func (e *Event) CreateEvent() error {
 		// Ensure Target exists or create it if specified
 		if e.Target.Type != "" {
 			var target Unit
-			log.Printf("Checking or creating Target with Type: %s", e.Target.Type)
+			logs.Sugar.Debugf("Checking or creating Target with Type: %s", e.Target.Type)
 			if err := tx.Where(typeQuery, e.Target.Type).FirstOrCreate(&target, Unit{Type: e.Target.Type}).Error; err != nil {
-				log.Printf("Failed to find or create Target: %+v, error: %v", target, err)
+				logs.Sugar.Errorf("Failed to find or create Target: %+v, error: %v", target, err)
 				return err
 			}
 			e.TargetID = &target.UnitID
@@ -88,9 +87,9 @@ func (e *Event) CreateEvent() error {
 		// Ensure TargetWeapon exists or create it if specified
 		if e.TargetWeapon.Type != "" {
 			var targetWeapon Weapon
-			log.Printf("Checking or creating TargetWeapon with Type: %s", e.TargetWeapon.Type)
+			logs.Sugar.Debugf("Checking or creating TargetWeapon with Type: %s", e.TargetWeapon.Type)
 			if err := tx.Where(typeQuery, e.TargetWeapon.Type).FirstOrCreate(&targetWeapon, Weapon{Type: e.TargetWeapon.Type}).Error; err != nil {
-				log.Printf("Failed to find or create TargetWeapon: %+v, error: %v", targetWeapon, err)
+				logs.Sugar.Errorf("Failed to find or create TargetWeapon: %+v, error: %v", targetWeapon, err)
 				return err
 			}
 			e.TargetWeaponID = &targetWeapon.WeaponID
@@ -101,9 +100,9 @@ func (e *Event) CreateEvent() error {
 		// Ensure Weapon exists or create it
 		if e.Weapon.Type != "" {
 			var weapon Weapon
-			log.Printf("Checking or creating Weapon with Type: %s", e.Weapon.Type)
+			logs.Sugar.Debugf("Checking or creating Weapon with Type: %s", e.Weapon.Type)
 			if err := tx.Where(typeQuery, e.Weapon.Type).FirstOrCreate(&weapon, Weapon{Type: e.Weapon.Type}).Error; err != nil {
-				log.Printf("Failed to find or create Weapon: %+v, error: %v", weapon, err)
+				logs.Sugar.Errorf("Failed to find or create Weapon: %+v, error: %v", weapon, err)
 				return err
 			}
 			e.WeaponID = &weapon.WeaponID
@@ -121,9 +120,9 @@ func (e *Event) CreateEvent() error {
 			TargetWeaponID:  e.TargetWeaponID,
 		}
 
-		log.Printf("Creating Event: %+v", event)
+		logs.Sugar.Debugf("Creating Event: %+v", event)
 		if err := tx.Create(&event).Error; err != nil {
-			log.Printf("Failed to create Event: %+v, error: %v", event, err)
+			logs.Sugar.Errorf("Failed to create Event: %+v, error: %v", event, err)
 			return err
 		}
 

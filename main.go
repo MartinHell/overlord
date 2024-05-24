@@ -1,13 +1,14 @@
 package main
 
 import (
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/MartinHell/overlord/controllers"
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
+	"github.com/MartinHell/overlord/middleware"
 	"github.com/MartinHell/overlord/routers"
 	"github.com/gin-gonic/gin"
 )
@@ -22,6 +23,8 @@ func init() {
 func main() {
 
 	r := gin.Default()
+
+	r.Use(middleware.LoggerMiddleware())
 
 	routers.Route(r)
 
@@ -50,14 +53,14 @@ func main() {
 
 	go func() {
 		sig := <-sigs // This will block the program until a signal is received
-		log.Println("Signal received: ", sig)
+		logs.Sugar.Infoln("Signal received: ", sig)
 		done <- true
 	}()
 
-	log.Println("Server started")
+	logs.Sugar.Infoln("Server started")
 
 	// Wait here until we receive the done signal
 	<-done
 
-	log.Println("Server stopped")
+	logs.Sugar.Infoln("Server stopped")
 }

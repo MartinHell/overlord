@@ -2,12 +2,12 @@ package initializers
 
 import (
 	"context"
-	"log"
 	"os"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
+	"github.com/MartinHell/overlord/logs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -34,23 +34,23 @@ func InitGrpc() {
 	var err error
 	GrpcClientConn, err = grpc.DialContext(ctx, addr, opts...)
 	if err != nil {
-		log.Panicf("Failed to connect to server: %v", err)
+		logs.Sugar.Panicf("Failed to connect to server: %v", err)
 	}
 
-	log.Print("Connected to server")
+	logs.Sugar.Infoln("Connected to server")
 
 	missionClient := mission.NewMissionServiceClient(GrpcClientConn)
 	StreamEventsClient, err = missionClient.StreamEvents(context.Background(), &mission.StreamEventsRequest{})
 	if err != nil {
-		log.Panicf("Failed to open events stream: %v", err)
+		logs.Sugar.Panicf("Failed to open events stream: %v", err)
 	}
 
-	log.Print("Got mission client")
+	logs.Sugar.Infoln("Got mission client")
 
 	NetServiceClient = net.NewNetServiceClient(GrpcClientConn) // Fix: Create a new instance of net.NetServiceClient
 	if err != nil {
-		log.Panicf("Failed to create NetServiceClient: %v", err)
+		logs.Sugar.Panicf("Failed to create NetServiceClient: %v", err)
 	}
 
-	log.Print("Got net client")
+	logs.Sugar.Infoln("Got net client")
 }

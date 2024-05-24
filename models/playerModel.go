@@ -2,12 +2,12 @@ package models
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
 	"gorm.io/gorm"
 )
 
@@ -45,7 +45,7 @@ func (p *Player) GetPlayerFromDB() error {
 	if playerLookup.GetUcid() != "" {
 		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(p)
 		if result.Error != nil && result.Error.Error() != "record not found" {
-			log.Printf("Failed to find player: %v", result.Error)
+			logs.Sugar.Errorf("Failed to find player: %v", result.Error)
 			return result.Error
 		}
 
@@ -61,7 +61,7 @@ func (p *Player) GetPlayerByUCID(ucid string) error {
 
 	result := initializers.DB.Where(ucidQuery, ucid).First(&p)
 	if result.Error != nil {
-		log.Printf("Failed to get player: %v", result.Error)
+		logs.Sugar.Errorf("Failed to get player: %v", result.Error)
 		return result.Error
 	}
 
@@ -73,7 +73,7 @@ func (p *Player) CreatePlayer() error {
 
 	result := initializers.DB.Create(&p)
 	if result.Error != nil {
-		log.Printf("Failed to create player: %v", result.Error)
+		logs.Sugar.Errorf("Failed to create player: %v", result.Error)
 		return result.Error
 	}
 
@@ -105,7 +105,7 @@ func (p *Player) UpdatePlayer(up *Player) error {
 	if hasChanges {
 		result := initializers.DB.Model(&p).Where(ucidQuery, p.UCID).Updates(p)
 		if result.Error != nil {
-			log.Printf("Failed to update player: %v", result.Error)
+			logs.Sugar.Errorf("Failed to update player: %v", result.Error)
 			return result.Error
 		}
 	}
@@ -124,7 +124,7 @@ func (p *Player) CheckIfPlayerInDB() bool {
 	if playerLookup.GetUcid() != "" {
 		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(&player)
 		if result.Error != nil && result.Error.Error() != "record not found" {
-			log.Printf("Failed to find player: %v", result.Error)
+			logs.Sugar.Errorf("Failed to find player: %v", result.Error)
 		}
 
 		if result.RowsAffected == 0 {
@@ -140,7 +140,7 @@ func (p *Player) GetPlayerUcidByName() error {
 	var playercache PlayerCache
 	err := playercache.RefreshPlayersCache()
 	if err != nil {
-		log.Panicf("Failed to refresh player cache: %v", err)
+		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
 	}
 
 	player := *playercache.FindPlayerByName(p.GetPlayerName())
@@ -196,7 +196,7 @@ func (p *Player) GetPlayerUcid() string {
 	var playercache PlayerCache
 	err := playercache.RefreshPlayersCache()
 	if err != nil {
-		log.Panicf("Failed to refresh player cache: %v", err)
+		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
 	}
 
 	player := *playercache.FindPlayerByName(p.GetPlayerName())
@@ -215,7 +215,7 @@ func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetP
 		}
 		return player
 	}
-	log.Println("Finding player by name: ", name)
+	logs.Sugar.Debugf("Finding player by name: %s", name)
 	for _, player := range p.Players {
 		if player.Name == name {
 			return player
@@ -227,7 +227,7 @@ func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetP
 // Find Player in cache based on UCID
 func (p *PlayerCache) FindPlayerByUCID(ucid string) *net.GetPlayersResponse_GetPlayerInfo {
 
-	log.Println("Finding player by UCID: ", ucid)
+	logs.Sugar.Debugf("Finding player by UCID: %s", ucid)
 	for _, player := range p.Players {
 		if player.Ucid == ucid {
 			return player
@@ -239,13 +239,13 @@ func (p *PlayerCache) FindPlayerByUCID(ucid string) *net.GetPlayersResponse_GetP
 // This is a cache of players that we can use to avoid querying the database
 func (p *PlayerCache) RefreshPlayersCache() error {
 
-	log.Print("Refreshing player cache")
+	logs.Sugar.Debug("Refreshing player cache")
 	response, err := initializers.NetServiceClient.GetPlayers(context.Background(), &net.GetPlayersRequest{})
 	if err != nil {
 		return err
 	}
 
-	log.Printf("%+v", response)
+	logs.Sugar.Debugf("%+v", response)
 	p.Players = response.Players
 	return nil
 }
