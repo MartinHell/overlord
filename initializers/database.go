@@ -1,9 +1,9 @@
 package initializers
 
 import (
-	"log"
 	"os"
 
+	"github.com/MartinHell/overlord/logs"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -29,10 +29,10 @@ func ConnectToDB() {
 			DisableForeignKeyConstraintWhenMigrating: true,
 		})
 	default:
-		log.Fatal("Unsupported database type")
+		logs.Sugar.Fatalln("Unsupported database type")
 	}
 
 	if err != nil {
-		log.Fatalf("Failed to connect to %s database: %v", dbType, err)
+		logs.Sugar.Fatalf("Failed to connect to %s database: %v", dbType, err)
 	}
 }

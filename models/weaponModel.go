@@ -2,11 +2,11 @@ package models
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/common"
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
 	"gorm.io/gorm"
 )
 
@@ -27,7 +27,7 @@ func (w *Weapon) FindWeaponByType() error {
 	result := initializers.DB.Where("type = ?", w.Type).First(&w)
 
 	if result.Error != nil {
-		log.Printf("Failed to query weapon: %v", result.Error)
+		logs.Sugar.Errorf("Failed to query weapon: %v", result.Error)
 		return result.Error
 	}
 
@@ -46,7 +46,7 @@ func (w *Weapon) CreateWeapon() error {
 		result := initializers.DB.Create(w)
 
 		if result.Error != nil {
-			log.Printf("Failed to create weapon: %v", result.Error)
+			logs.Sugar.Errorf("Failed to create weapon: %v", result.Error)
 			return result.Error
 		}
 
@@ -70,7 +70,7 @@ func (w *Weapon) UpdateWeapon(uw *Weapon) error {
 		result := initializers.DB.Model(&w).Updates(w)
 
 		if result.Error != nil {
-			log.Printf("Failed to update weapon: %v", result.Error)
+			logs.Sugar.Errorf("Failed to update weapon: %v", result.Error)
 			return result.Error
 		}
 	}

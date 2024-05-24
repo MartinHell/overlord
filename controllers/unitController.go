@@ -1,10 +1,10 @@
 package controllers
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
 	"github.com/gin-gonic/gin"
 )
@@ -58,7 +58,7 @@ func CreateUnit(u *models.Unit) error {
 
 	result := initializers.DB.Create(&u)
 	if result.Error != nil {
-		log.Printf("Failed to create unit: %v", result.Error)
+		logs.Sugar.Errorf("Failed to create unit: %v", result.Error)
 		return result.Error
 	}
 
@@ -78,7 +78,7 @@ func UpdateUnit(u *models.Unit, uu *models.Unit) error {
 	if hasChanges {
 		result := initializers.DB.Model(&u).Updates(&u)
 		if result.Error != nil {
-			log.Printf("Failed to update unit: %v", result.Error)
+			logs.Sugar.Errorf("Failed to update unit: %v", result.Error)
 			return result.Error
 		}
 	}
@@ -90,7 +90,7 @@ func GetUnit(u *models.Unit) (*models.Unit, error) {
 
 	result := initializers.DB.Where("type = ?", u.Type).First(&u)
 	if result.Error != nil {
-		log.Printf("Failed to get unit: %v", result.Error)
+		logs.Sugar.Errorf("Failed to get unit: %v", result.Error)
 		return nil, result.Error
 	}
 

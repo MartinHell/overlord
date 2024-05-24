@@ -1,10 +1,10 @@
 package controllers
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
 	"github.com/gin-gonic/gin"
 )
@@ -35,7 +35,7 @@ func GetWeaponByName(c *gin.Context) {
 	result := initializers.DB.Where("name = ?", c.Param("id")).First(&weapon)
 
 	if result.Error != nil {
-		log.Printf("Failed to query weapon: %v", result.Error)
+		logs.Sugar.Errorf("Failed to query weapon: %v", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
@@ -56,7 +56,7 @@ func FindWeaponByType(t string) (*models.Weapon, error) {
 	result := initializers.DB.Where("type = ?", t).First(&weapon)
 
 	if result.Error != nil {
-		log.Printf("Failed to query weapon: %v", result.Error)
+		logs.Sugar.Errorf("Failed to query weapon: %v", result.Error)
 		return nil, result.Error
 	}
 
@@ -73,7 +73,7 @@ func CreateWeapon(w *models.Weapon) error {
 	result := initializers.DB.Create(w)
 
 	if result.Error != nil {
-		log.Printf("Failed to create weapon: %v", result.Error)
+		logs.Sugar.Errorf("Failed to create weapon: %v", result.Error)
 		return result.Error
 	}
 
@@ -93,7 +93,7 @@ func UpdateWeapon(w *models.Weapon, uw *models.Weapon) error {
 		result := initializers.DB.Model(&w).Updates(w)
 
 		if result.Error != nil {
-			log.Printf("Failed to update weapon: %v", result.Error)
+			logs.Sugar.Errorf("Failed to update weapon: %v", result.Error)
 			return result.Error
 		}
 	}

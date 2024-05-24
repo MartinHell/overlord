@@ -1,10 +1,10 @@
 package controllers
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/MartinHell/overlord/initializers"
+	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
 	"github.com/gin-gonic/gin"
 )
@@ -35,7 +35,7 @@ func GetPlayerByName(c *gin.Context) {
 	result := initializers.DB.Where("name LIKE ?", c.Param("id")).Find(&players)
 
 	if result.Error != nil {
-		log.Printf("Failed to query players: %v", result.Error)
+		logs.Sugar.Errorf("Failed to query players: %v", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
@@ -53,13 +53,13 @@ func GetPlayerByName(c *gin.Context) {
 func GetPlayerByUCID(c *gin.Context) {
 	var player models.Player
 
-	resutl := initializers.DB.Where("uc_id = ?", c.Param("id")).First(&player)
+	result := initializers.DB.Where("uc_id = ?", c.Param("id")).First(&player)
 
-	if resutl.Error != nil {
-		log.Printf("Failed to query player: %v", resutl.Error)
+	if result.Error != nil {
+		logs.Sugar.Errorf("Failed to query player: %v", result.Error)
 	}
 
-	if resutl.RowsAffected == 0 {
+	if result.RowsAffected == 0 {
 		c.JSON(http.StatusNotFound, gin.H{
 			"player": player,
 		})
@@ -77,7 +77,7 @@ func GetPlayerEvents(c *gin.Context) {
 	result := initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("player_id = ?", c.Param("id")).Find(&events)
 
 	if result.Error != nil {
-		log.Printf("Failed to query player events: %v", result.Error)
+		logs.Sugar.Errorf("Failed to query player events: %v", result.Error)
 	}
 
 	if result.RowsAffected == 0 {
