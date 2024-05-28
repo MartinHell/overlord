@@ -32,7 +32,9 @@ type Event struct {
 func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Unit, tw *Weapon) {
 	e.Event = eventType
 	e.Player = *p
-	e.Initiator = *i
+	if e.Initiator.Type != "" {
+		e.Initiator = *i
+	}
 	e.Weapon = *w
 	if t != nil {
 		e.Target = *t
