@@ -20,12 +20,6 @@ func init() {
 
 func main() {
 
-	/*	r := gin.Default()
-
-	 	r.Use(middleware.LoggerMiddleware())
-
-		routers.Route(r) */
-
 	go routers.GraphQLHandler()
 
 	// Create a channel to listen for OS signals
@@ -38,8 +32,6 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	go controllers.StreamEvents()
-
-	/* 	go r.Run() */
 
 	defer initializers.GrpcClientConn.Close()
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/MartinHell/overlord/controllers"
 	"github.com/MartinHell/overlord/graph/generated"
-	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/models"
 )
 
@@ -135,7 +134,7 @@ func (r *queryResolver) ShotsBreakdown(ctx context.Context) ([]*models.UnitWeapo
 	return result, nil
 }
 
-func (r *queryResolver) ShotsByPlayer(ctx context.Context) ([]*models.PlayerShotBreakdown, error) {
+func (r *queryResolver) ShotsByPlayers(ctx context.Context) ([]*models.PlayerShotBreakdown, error) {
 	events := controllers.GetEventsByType("shot")
 	if events == nil {
 		return nil, nil // or handle the nil events case as needed
@@ -206,23 +205,82 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context) ([]*models.PlayerShot
 	return result, nil
 }
 
-func PlayerShotBreakdown(ctx context.Context, args struct {
-	PlayerID string
-}) (*models.PlayerShotBreakdown, error) {
+func (r *queryResolver) ShotsByPlayer(ctx context.Context, pID string) (*models.PlayerShotBreakdown, error) {
 	var playerID uint
-	if args.PlayerID != "" {
-		playerID, _ = strconv.ParseUint(args.PlayerID, 10, 64)
+	if pID != "" {
+		tmpID, _ := strconv.ParseUint(pID, 10, 64)
+		playerID = uint(tmpID)
+	}
+
+	var player models.Player
+
+	player.GetPlayerByPlayerID(playerID)
+
+	events := controllers.GetEventsByTypeAndPlayer("shot", playerID)
+	if events == nil {
+		return nil, nil // or handle the nil events case as needed
+	}
+
+	var result models.PlayerShotBreakdown
+
+	fmt.Println(player.GetPlayerName())
+
+	result.PlayerName = *player.PlayerName
+	result.PlayerID = *events[0].PlayerID
+
+	breakdown := make(map[string]map[string]int)
+
+	for _, event := range events {
+		// Check if player is present in the event
+		if event.Player.PlayerName == nil {
+			continue // Skip events without player information
+		}
+
+		// Check if unit type and weapon type are present in the event
+		if &event.Initiator == nil || event.Initiator.Type == "" || &event.Weapon == nil || event.Weapon.Type == "" {
+			continue // Skip events without unit type or weapon type
+		}
+
+		unitType := event.Initiator.Type
+		weaponType := event.Weapon.Type
+
+		if breakdown[unitType] == nil {
+			breakdown[unitType] = make(map[string]int)
+		}
+		breakdown[unitType][weaponType]++
+	}
+
+	for unitType, weapons := range breakdown {
+		unit := &models.UnitShotBreakdown{
+			UnitType: unitType,
+			Weapons:  []*models.WeaponShotBreakdown{},
+		}
+		for weaponType, count := range weapons {
+			unit.Weapons = append(unit.Weapons, &models.WeaponShotBreakdown{
+				WeaponType: weaponType,
+				Count:      count,
+			})
+		}
+		result.Units = append(result.Units, unit)
+	}
+
+	return &result, nil
+}
+
+func PlayerShotBreakdown(ctx context.Context, pID string) ([]*models.UnitShotBreakdown, error) {
+	var playerID uint
+	if pID != "" {
+		tmpID, _ := strconv.ParseUint(pID, 10, 64)
+		playerID = uint(tmpID)
 	}
 	return getPlayerShotBreakdown(playerID)
 }
 
-func getPlayerShotBreakdown(playerID uint) (*models.PlayerShotBreakdown, error) {
+func getPlayerShotBreakdown(playerID uint) ([]*models.UnitShotBreakdown, error) {
 	var player models.Player
-	if err := initializers.DB.Where("player_id = ?", playerID).First(&player).Error; err != nil {
-		return nil, err
-	}
+	player.GetPlayerByPlayerID(playerID)
 
-	events := controllers.GetEventsByType("shot")
+	events := controllers.GetEventsByTypeAndPlayer("shot", playerID)
 	if events == nil {
 		return nil, nil // or handle the nil events case as needed
 	}
@@ -230,14 +288,13 @@ func getPlayerShotBreakdown(playerID uint) (*models.PlayerShotBreakdown, error) 
 	breakdown := make(map[string]map[string]map[string]int)
 	playerUCIDs := make(map[string]string)
 	playerNames := make(map[string]string)
-	fmt.Println("test")
+
 	for _, event := range events {
 		// Check if player is present in the event
 		if event.Player.PlayerName == nil {
 			continue // Skip events without player information
 		}
 
-		fmt.Printf("%+v\n", event)
 		playerUCID := event.Player.UCID
 		playerID := fmt.Sprintf("%d", *event.PlayerID)
 		playerUCIDs[playerID] = playerUCID
@@ -258,10 +315,9 @@ func getPlayerShotBreakdown(playerID uint) (*models.PlayerShotBreakdown, error) 
 			breakdown[playerID][unitType] = make(map[string]int)
 		}
 		breakdown[playerID][unitType][weaponType]++
-		fmt.Printf("%d", breakdown[playerID][unitType][weaponType])
 	}
 
-	var result []*models.PlayerShotBreakdown
+	var result []*models.UnitShotBreakdown
 	for playerID, units := range breakdown {
 		player := &models.PlayerShotBreakdown{
 			PlayerID:   convertStringToUint(playerID),
@@ -281,16 +337,19 @@ func getPlayerShotBreakdown(playerID uint) (*models.PlayerShotBreakdown, error) 
 			}
 			player.Units = append(player.Units, unit)
 		}
-		result = append(result, player)
+		result = append(result, player.Units...)
 	}
-
-	// Sort result alphabetically based on player names
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].PlayerName < result[j].PlayerName
-	})
 
 	return result, nil
 }
+
+func (r *queryResolver) PlayerShotsBreakdown(ctx context.Context, playerID string) ([]*models.UnitShotBreakdown, error) {
+	if playerID == "" {
+		return nil, nil // or handle the nil playerID case as needed
+	}
+	return PlayerShotBreakdown(ctx, playerID)
+}
+
 func (r *queryResolver) Event(ctx context.Context, id string) (*models.Event, error) {
 	return controllers.GetEvent(id), nil
 }

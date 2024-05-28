@@ -86,5 +86,6 @@ type Query {
     weapon(id: ID!): Weapon
     healthcheck: String!
     shotsBreakdown: [UnitWeaponBreakdown]
-    shotsByPlayer: [PlayerShotBreakdown]
+    shotsByPlayers: [PlayerShotBreakdown]
+    shotsByPlayer(playerID: ID!): PlayerShotBreakdown
 }

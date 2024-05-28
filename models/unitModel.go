@@ -17,7 +17,9 @@ type Unit struct {
 }
 
 func (u *Unit) FromCommonUnit(r *common.Unit) {
-	u.Type = r.Type
+	if r.Type != "" {
+		u.Type = r.Type
+	}
 }
 
 func ensureUnit(tx *gorm.DB, unit Unit, unitType string) (*uint, error) {

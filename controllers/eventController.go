@@ -32,6 +32,14 @@ func GetEventsByType(eventType string) []*models.Event {
 	return events
 }
 
+func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
+	var events []*models.Event
+
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
+
+	return events
+}
+
 func GetEvent(id string) *models.Event {
 	var event *models.Event
 

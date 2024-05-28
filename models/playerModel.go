@@ -68,6 +68,17 @@ func (p *Player) GetPlayerByUCID(ucid string) error {
 	return nil
 }
 
+func (p *Player) GetPlayerByPlayerID(id uint) error {
+
+	result := initializers.DB.Where("player_id = ?", id).First(&p)
+	if result.Error != nil {
+		logs.Sugar.Errorf("Failed to get player: %v", result.Error)
+		return result.Error
+	}
+
+	return nil
+}
+
 // CreatePlayer creates a player in the database
 func (p *Player) CreatePlayer() error {
 
