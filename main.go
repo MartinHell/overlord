@@ -8,9 +8,7 @@ import (
 	"github.com/MartinHell/overlord/controllers"
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
-	"github.com/MartinHell/overlord/middleware"
 	"github.com/MartinHell/overlord/routers"
-	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -22,11 +20,13 @@ func init() {
 
 func main() {
 
-	r := gin.Default()
+	/*	r := gin.Default()
 
-	r.Use(middleware.LoggerMiddleware())
+	 	r.Use(middleware.LoggerMiddleware())
 
-	routers.Route(r)
+		routers.Route(r) */
+
+	go routers.GraphQLHandler()
 
 	// Create a channel to listen for OS signals
 	sigs := make(chan os.Signal, 1)
@@ -39,17 +39,9 @@ func main() {
 
 	go controllers.StreamEvents()
 
-	go r.Run()
+	/* 	go r.Run() */
 
 	defer initializers.GrpcClientConn.Close()
-
-	/* 	var playercache models.PlayerCache
-	   	err := playercache.RefreshPlayersCache()
-	   	if err != nil {
-	   		log.Panicf("Failed to refresh player cache: %v", err)
-	   	}
-	   	player := playercache.FindPlayerByName("Sakura")
-	   	log.Printf("Player: %+v", player) */
 
 	go func() {
 		sig := <-sigs // This will block the program until a signal is received

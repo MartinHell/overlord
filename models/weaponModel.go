@@ -77,3 +77,17 @@ func (w *Weapon) UpdateWeapon(uw *Weapon) error {
 
 	return nil
 }
+
+func ensureWeapon(tx *gorm.DB, weapon Weapon, weaponType string) (*uint, error) {
+	if weapon.Type == "" {
+		return nil, nil
+	}
+
+	var existingWeapon Weapon
+	logs.Sugar.Debugf("Checking or creating %s with Type: %s", weaponType, weapon.Type)
+	if err := tx.Where("type = ?", weapon.Type).FirstOrCreate(&existingWeapon, Weapon{Type: weapon.Type}).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find or create %s: %+v, error: %v", weaponType, existingWeapon, err)
+		return nil, err
+	}
+	return &existingWeapon.WeaponID, nil
+}

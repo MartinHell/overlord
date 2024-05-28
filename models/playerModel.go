@@ -150,17 +150,13 @@ func (p *Player) GetPlayerUcidByName() error {
 }
 
 func (p *Player) FromGetPlayersResponse_GetPlayerInfo(r *net.GetPlayersResponse_GetPlayerInfo) {
-	/* p.Id = r.Id */
 	p.PlayerName = &r.Name
 	p.UCID = r.Ucid
-	//p.IP = r.RemoteAddress
 }
 
 func (p *Player) FromStreamEventsResponse_ConnectEvent(r *mission.StreamEventsResponse_ConnectEvent) {
 	p.PlayerName = &r.Name
 	p.UCID = r.Ucid
-	//p.IP = r.Addr
-	/* p.Id = r.Id */
 }
 
 func (p *Player) GetPlayerName() string {
@@ -184,14 +180,6 @@ func (p *Player) GetIP() string {
 	return ""
 }
 
-/*
-	 func (p *Player) GetId() uint32 {
-		if p != nil {
-			return p.Id
-		}
-		return 0
-	}
-*/
 func (p *Player) GetPlayerUcid() string {
 	var playercache PlayerCache
 	err := playercache.RefreshPlayersCache()
@@ -248,4 +236,18 @@ func (p *PlayerCache) RefreshPlayersCache() error {
 	logs.Sugar.Debugf("%+v", response)
 	p.Players = response.Players
 	return nil
+}
+
+func ensurePlayer(tx *gorm.DB, player Player) (*uint, error) {
+	if player.UCID == "" {
+		return nil, nil
+	}
+
+	var existingPlayer Player
+	logs.Sugar.Debugf("Checking or creating Player with UCID: %s", player.UCID)
+	if err := tx.Where("uc_id = ?", player.UCID).FirstOrCreate(&existingPlayer, Player{UCID: player.UCID, PlayerName: player.PlayerName}).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find or create Player: %+v, error: %v", existingPlayer, err)
+		return nil, err
+	}
+	return &existingPlayer.PlayerID, nil
 }

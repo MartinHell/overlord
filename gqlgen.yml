@@ -1,0 +1,51 @@
+schema:
+  - graph/schema.graphql
+
+exec:
+  filename: graph/generated/generated.go
+  package: generated
+
+model:
+
+resolver:
+  dir: graph
+  package: graph
+  filename: graph/resolver.go
+
+models:
+  Time:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time
+  Event:
+    model:
+      - github.com/MartinHell/overlord/models.Event
+  Player:
+    model:
+      - github.com/MartinHell/overlord/models.Player
+  Unit:
+    model:
+      - github.com/MartinHell/overlord/models.Unit
+  Weapon:
+    model:
+      - github.com/MartinHell/overlord/models.Weapon
+  EventConnection:
+    model:
+      - github.com/MartinHell/overlord/models.EventConnection
+  EventEdge:
+    model:
+      - github.com/MartinHell/overlord/models.EventEdge
+  PageInfo:
+    model:
+      - github.com/MartinHell/overlord/models.PageInfo
+  UnitWeaponBreakdown:
+    model:
+      - github.com/MartinHell/overlord/models.UnitWeaponBreakdown
+  PlayerShotBreakdown:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerShotBreakdown
+  UnitShotBreakdown:
+    model:
+      - github.com/MartinHell/overlord/models.UnitShotBreakdown
+  WeaponShotBreakdown:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponShotBreakdown
