@@ -3,6 +3,7 @@ package controllers
 import (
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/MartinHell/overlord/initializers"
@@ -104,19 +105,30 @@ func StreamEvents() {
 	var eventHandler EventHandler = &DCSEventHandler{}
 
 	for {
-		event, err := initializers.StreamEventsClient.Recv()
+		err := handleStreamEvents(eventHandler)
 		if err == io.EOF {
-			logs.Sugar.Errorf("Server closed events stream")
+			logs.Sugar.Errorf("Server closed events stream, retrying...")
 		} else if err != nil {
-			logs.Sugar.Errorf("Failed to receive event: %v", err)
+			logs.Sugar.Errorf("Failed to receive event: %v, retrying...", err)
 		}
 
-		logs.Sugar.Debugf("Received event: %v", event.GetEvent())
+		// Wait before retrying to avoid tight loop
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func handleStreamEvents(eventHandler EventHandler) error {
+	for {
+		event, err := initializers.StreamEventsClient.Recv()
+		if err != nil {
+			return err
+		}
+
+		logs.Sugar.Debugf("Received event: %v", event.Event)
 		err = eventHandler.HandleEvent(event)
 		if err != nil {
 			logs.Sugar.Errorf("Failed to handle event: %v", err)
 		}
-
 	}
 }
 
