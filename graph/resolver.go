@@ -45,6 +45,10 @@ func (r *Resolver) Weapon() generated.WeaponResolver {
 	return &weaponResolver{r}
 }
 
+func (r *Resolver) Target() generated.TargetResolver {
+	return &targetResolver{r}
+}
+
 func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
 	return &playerShotBreakdownResolver{r}
 }
@@ -242,6 +246,20 @@ func (r *weaponResolver) DeletedAt(ctx context.Context, obj *models.Weapon) (*ti
 
 func (r *weaponResolver) WeaponID(ctx context.Context, obj *models.Weapon) (string, error) {
 	return fmt.Sprintf("%v", obj.WeaponID), nil
+}
+
+type targetResolver struct{ *Resolver }
+
+func (r *targetResolver) TargetID(ctx context.Context, obj *models.Target) (string, error) {
+	return fmt.Sprintf("%v", obj.TargetID), nil
+}
+
+func (r *targetResolver) Unit(ctx context.Context, obj *models.Target) (*models.Unit, error) {
+	return &models.Unit{}, nil
+}
+
+func (r *targetResolver) Weapon(ctx context.Context, obj *models.Target) (*models.Weapon, error) {
+	return &models.Weapon{}, nil
 }
 
 type playerShotBreakdownResolver struct{ *Resolver }

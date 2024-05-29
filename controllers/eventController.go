@@ -152,7 +152,7 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 
 	event := models.Event{}
 
-	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil, nil)
+	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil)
 
 	event.CreateEvent()
 
@@ -193,13 +193,12 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 	// Create event in DB
 
 	// Create target
-	target := models.Unit{}
-	targetWeapon := models.Weapon{}
+	target := models.Target{}
 	if p.Target != nil {
 		if p.Target.GetUnit() != nil {
-			target.FromCommonUnit(p.Target.GetUnit())
+			target.Unit.FromCommonUnit(p.Target.GetUnit())
 		} else if p.Target.GetWeapon() != nil {
-			targetWeapon.Type = p.Target.GetWeapon().GetType()
+			target.Weapon.FromCommonWeapon(p.Target.GetWeapon())
 		} else {
 			// TODO: Handle more target types
 			logs.Sugar.Debugf("Unknown target type: %v", p.Target)
@@ -208,7 +207,7 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 
 	event := models.Event{}
 
-	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target, &targetWeapon)
+	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target)
 
 	event.CreateEvent()
 

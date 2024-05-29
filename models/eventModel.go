@@ -22,7 +22,7 @@ type Event struct {
 	InitiatorUnitID *uint
 	Initiator       Unit `gorm:"foreignKey:InitiatorUnitID;references:UnitID"`
 	TargetID        *uint
-	Target          Unit `gorm:"foreignKey:TargetID;references:TargetID"`
+	Target          Target `gorm:"foreignKey:TargetID;references:TargetID"`
 	WeaponID        *uint
 	Weapon          Weapon `gorm:"foreignKey:WeaponID;references:WeaponID"`
 }
@@ -43,7 +43,7 @@ type PageInfo struct {
 	HasNextPage bool   `json:"hasNextPage"`
 }
 
-func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Unit, tw *Weapon) {
+func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Target) {
 	e.Event = eventType
 	e.Player = *p
 	if i.Type != "" {
@@ -52,9 +52,6 @@ func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w
 	e.Weapon = *w
 	if t != nil {
 		e.Target = *t
-	}
-	if tw != nil {
-		e.TargetWeapon = *tw
 	}
 }
 
@@ -70,19 +67,13 @@ func (e *Event) CreateEvent() error {
 		}
 
 		// Ensure Initiator exists or create it
-		e.InitiatorUnitID, err = ensureUnit(tx, e.Initiator, "Initiator")
+		e.InitiatorUnitID, err = ensureUnit(tx, e.Initiator)
 		if err != nil {
 			return err
 		}
 
 		// Ensure Target exists or create it if specified
-		e.TargetID, err = ensureUnit(tx, e.Target, "Target")
-		if err != nil {
-			return err
-		}
-
-		// Ensure TargetWeapon exists or create it if specified
-		e.TargetWeaponID, err = ensureWeapon(tx, e.TargetWeapon, "TargetWeapon")
+		e.TargetID, err = ensureTarget(tx, e.Target)
 		if err != nil {
 			return err
 		}
@@ -100,7 +91,6 @@ func (e *Event) CreateEvent() error {
 			InitiatorUnitID: e.InitiatorUnitID,
 			TargetID:        e.TargetID,
 			WeaponID:        e.WeaponID,
-			TargetWeaponID:  e.TargetWeaponID,
 		}
 
 		logs.Sugar.Debugf("Creating Event: %+v", event)
