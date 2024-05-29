@@ -106,6 +106,13 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 	}, nil
 }
 
+// TODO: Refactor this to return the breakdown of shots on type of unit:
+// Somethign like this:
+// - UnitType
+//   - WeaponType
+//     Count
+//   - WeaponType
+//     Count
 func (r *queryResolver) ShotsBreakdown(ctx context.Context) ([]*models.UnitWeaponBreakdown, error) {
 	events := controllers.GetEventsByType("shot")
 	breakdown := make(map[string]map[string]int)
@@ -140,69 +147,7 @@ func (r *queryResolver) ShotsByPlayers(ctx context.Context) ([]*models.PlayerSho
 		return nil, nil // or handle the nil events case as needed
 	}
 
-	breakdown := make(map[string]map[string]map[string]int)
-	playerUCIDs := make(map[string]string)
-	playerNames := make(map[string]string)
-	fmt.Println("test")
-	for _, event := range events {
-		// Check if player is present in the event
-		if event.Player.PlayerName == nil {
-			continue // Skip events without player information
-		}
-
-		fmt.Printf("%+v\n", event)
-		playerUCID := event.Player.UCID
-		playerID := fmt.Sprintf("%d", *event.PlayerID)
-		playerUCIDs[playerID] = playerUCID
-		playerNames[playerID] = *event.Player.PlayerName // Store player name for each player ID
-
-		// Check if unit type and weapon type are present in the event
-		if &event.Initiator == nil || event.Initiator.Type == "" || &event.Weapon == nil || event.Weapon.Type == "" {
-			continue // Skip events without unit type or weapon type
-		}
-
-		unitType := event.Initiator.Type
-		weaponType := event.Weapon.Type
-
-		if breakdown[playerID] == nil {
-			breakdown[playerID] = make(map[string]map[string]int)
-		}
-		if breakdown[playerID][unitType] == nil {
-			breakdown[playerID][unitType] = make(map[string]int)
-		}
-		breakdown[playerID][unitType][weaponType]++
-		fmt.Printf("%d", breakdown[playerID][unitType][weaponType])
-	}
-
-	var result []*models.PlayerShotBreakdown
-	for playerID, units := range breakdown {
-		player := &models.PlayerShotBreakdown{
-			PlayerID:   convertStringToUint(playerID),
-			PlayerName: playerNames[playerID], // Retrieve the player name
-			Units:      []*models.UnitShotBreakdown{},
-		}
-		for unitType, weapons := range units {
-			unit := &models.UnitShotBreakdown{
-				UnitType: unitType,
-				Weapons:  []*models.WeaponShotBreakdown{},
-			}
-			for weaponType, count := range weapons {
-				unit.Weapons = append(unit.Weapons, &models.WeaponShotBreakdown{
-					WeaponType: weaponType,
-					Count:      count,
-				})
-			}
-			player.Units = append(player.Units, unit)
-		}
-		result = append(result, player)
-	}
-
-	// Sort result alphabetically based on player names
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].PlayerName < result[j].PlayerName
-	})
-
-	return result, nil
+	return GeneratePlayerShotBreakdowns(events)
 }
 
 func (r *queryResolver) ShotsByPlayer(ctx context.Context, pID string) (*models.PlayerShotBreakdown, error) {
@@ -221,50 +166,14 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, pID string) (*models.
 		return nil, nil // or handle the nil events case as needed
 	}
 
-	var result models.PlayerShotBreakdown
+	var result []*models.PlayerShotBreakdown
 
-	fmt.Println(player.GetPlayerName())
-
-	result.PlayerName = *player.PlayerName
-	result.PlayerID = *events[0].PlayerID
-
-	breakdown := make(map[string]map[string]int)
-
-	for _, event := range events {
-		// Check if player is present in the event
-		if event.Player.PlayerName == nil {
-			continue // Skip events without player information
-		}
-
-		// Check if unit type and weapon type are present in the event
-		if &event.Initiator == nil || event.Initiator.Type == "" || &event.Weapon == nil || event.Weapon.Type == "" {
-			continue // Skip events without unit type or weapon type
-		}
-
-		unitType := event.Initiator.Type
-		weaponType := event.Weapon.Type
-
-		if breakdown[unitType] == nil {
-			breakdown[unitType] = make(map[string]int)
-		}
-		breakdown[unitType][weaponType]++
+	result, err := GeneratePlayerShotBreakdowns(events)
+	if err != nil {
+		return nil, err
 	}
 
-	for unitType, weapons := range breakdown {
-		unit := &models.UnitShotBreakdown{
-			UnitType: unitType,
-			Weapons:  []*models.WeaponShotBreakdown{},
-		}
-		for weaponType, count := range weapons {
-			unit.Weapons = append(unit.Weapons, &models.WeaponShotBreakdown{
-				WeaponType: weaponType,
-				Count:      count,
-			})
-		}
-		result.Units = append(result.Units, unit)
-	}
-
-	return &result, nil
+	return result[0], nil
 }
 
 func (r *queryResolver) Event(ctx context.Context, id string) (*models.Event, error) {
@@ -406,4 +315,71 @@ func (r *unitWeaponBreakdownResolver) UnitType(ctx context.Context, obj *models.
 
 func (r *unitWeaponBreakdownResolver) WeaponType(ctx context.Context, obj *models.UnitWeaponBreakdown) (string, error) {
 	return obj.Weapon, nil
+}
+
+// Helper functions
+
+func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotBreakdown, error) {
+	breakdown := make(map[string]map[string]map[string]int)
+	playerUCIDs := make(map[string]string)
+	playerNames := make(map[string]string)
+
+	for _, event := range events {
+		// Check if player is present in the event
+		if event.Player.PlayerName == nil {
+			continue // Skip events without player information
+		}
+
+		fmt.Printf("%+v\n", event)
+		playerUCID := event.Player.UCID
+		playerID := fmt.Sprintf("%d", *event.PlayerID)
+		playerUCIDs[playerID] = playerUCID
+		playerNames[playerID] = *event.Player.PlayerName // Store player name for each player ID
+
+		// Check if unit type and weapon type are present in the event
+		if &event.Initiator == nil || event.Initiator.Type == "" || &event.Weapon == nil || event.Weapon.Type == "" {
+			continue // Skip events without unit type or weapon type
+		}
+
+		unitType := event.Initiator.Type
+		weaponType := event.Weapon.Type
+
+		if breakdown[playerID] == nil {
+			breakdown[playerID] = make(map[string]map[string]int)
+		}
+		if breakdown[playerID][unitType] == nil {
+			breakdown[playerID][unitType] = make(map[string]int)
+		}
+		breakdown[playerID][unitType][weaponType]++
+	}
+
+	var result []*models.PlayerShotBreakdown
+	for playerID, units := range breakdown {
+		player := &models.PlayerShotBreakdown{
+			PlayerID:   convertStringToUint(playerID),
+			PlayerName: playerNames[playerID], // Retrieve the player name
+			Units:      []*models.UnitShotBreakdown{},
+		}
+		for unitType, weapons := range units {
+			unit := &models.UnitShotBreakdown{
+				UnitType: unitType,
+				Weapons:  []*models.WeaponShotBreakdown{},
+			}
+			for weaponType, count := range weapons {
+				unit.Weapons = append(unit.Weapons, &models.WeaponShotBreakdown{
+					WeaponType: weaponType,
+					Count:      count,
+				})
+			}
+			player.Units = append(player.Units, unit)
+		}
+		result = append(result, player)
+	}
+
+	// Sort result alphabetically based on player names
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].PlayerName < result[j].PlayerName
+	})
+
+	return result, nil
 }
