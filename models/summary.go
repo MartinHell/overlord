@@ -1,9 +1,8 @@
 package models
 
 type UnitWeaponBreakdown struct {
-	Unit   string
-	Weapon string
-	Count  int
+	Unit    string
+	Weapons []*WeaponShotBreakdown
 }
 
 type PlayerShotBreakdown struct {

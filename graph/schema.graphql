@@ -55,8 +55,7 @@ type PageInfo {
 
 type UnitWeaponBreakdown {
     unitType: String!
-    weaponType: String!
-    count: Int!
+    weapons: [WeaponShotBreakdown]!
 }
 
 type PlayerShotBreakdown {

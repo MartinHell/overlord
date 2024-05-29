@@ -106,41 +106,15 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 	}, nil
 }
 
-// TODO: Refactor this to return the breakdown of shots on type of unit:
-// Somethign like this:
-// - UnitType
-//   - WeaponType
-//     Count
-//   - WeaponType
-//     Count
+// ShotsBreakdown returns a breakdown of shots by unit and weapon type
 func (r *queryResolver) ShotsBreakdown(ctx context.Context) ([]*models.UnitWeaponBreakdown, error) {
 	events := controllers.GetEventsByType("shot")
-	breakdown := make(map[string]map[string]int)
+	breakdown := generateBreakdownUnits(events)
 
-	for _, event := range events {
-		unitType := event.Initiator.Type
-		weaponType := event.Weapon.Type
-
-		if breakdown[unitType] == nil {
-			breakdown[unitType] = make(map[string]int)
-		}
-		breakdown[unitType][weaponType]++
-	}
-
-	var result []*models.UnitWeaponBreakdown
-	for unitType, weapons := range breakdown {
-		for weaponType, count := range weapons {
-			result = append(result, &models.UnitWeaponBreakdown{
-				Unit:   unitType,
-				Weapon: weaponType,
-				Count:  count,
-			})
-		}
-	}
-
-	return result, nil
+	return generateUnitWeaponBreakdown(breakdown), nil
 }
 
+// ShotsByPlayers returns a breakdown of shots by all players
 func (r *queryResolver) ShotsByPlayers(ctx context.Context) ([]*models.PlayerShotBreakdown, error) {
 	events := controllers.GetEventsByType("shot")
 	if events == nil {
@@ -150,6 +124,7 @@ func (r *queryResolver) ShotsByPlayers(ctx context.Context) ([]*models.PlayerSho
 	return GeneratePlayerShotBreakdowns(events)
 }
 
+// ShotsByPlayer returns a breakdown of shots by a specific player
 func (r *queryResolver) ShotsByPlayer(ctx context.Context, pID string) (*models.PlayerShotBreakdown, error) {
 	var playerID uint
 	if pID != "" {
@@ -306,7 +281,7 @@ func (r *weaponShotBreakdownResolver) Count(ctx context.Context, obj *models.Wea
 type unitWeaponBreakdownResolver struct{ *Resolver }
 
 func (r *unitWeaponBreakdownResolver) Count(ctx context.Context, obj *models.UnitWeaponBreakdown) (int, error) {
-	return obj.Count, nil
+	return obj.Weapons[0].Count, nil
 }
 
 func (r *unitWeaponBreakdownResolver) UnitType(ctx context.Context, obj *models.UnitWeaponBreakdown) (string, error) {
@@ -314,11 +289,54 @@ func (r *unitWeaponBreakdownResolver) UnitType(ctx context.Context, obj *models.
 }
 
 func (r *unitWeaponBreakdownResolver) WeaponType(ctx context.Context, obj *models.UnitWeaponBreakdown) (string, error) {
-	return obj.Weapon, nil
+	return obj.Weapons[0].WeaponType, nil
 }
 
 // Helper functions
+// generateBreakdownUnits generates a breakdown of shots by unit and weapon type
+func generateBreakdownUnits(events []*models.Event) map[string]map[string]int {
+	breakdown := make(map[string]map[string]int)
 
+	for _, event := range events {
+		// Check if unit type is present in the event
+		if &event.Initiator == nil || event.Initiator.Type == "" {
+			continue // Skip events without unit type
+		}
+
+		unitType := event.Initiator.Type
+		weaponType := event.Weapon.Type
+
+		if breakdown[unitType] == nil {
+			breakdown[unitType] = make(map[string]int)
+		}
+		breakdown[unitType][weaponType]++
+	}
+
+	return breakdown
+}
+
+// generateUnitWeaponBreakdown generates a slice of UnitWeaponBreakdown structs
+func generateUnitWeaponBreakdown(breakdown map[string]map[string]int) []*models.UnitWeaponBreakdown {
+	var result []*models.UnitWeaponBreakdown
+
+	for unitType, weapons := range breakdown {
+		unit := &models.UnitWeaponBreakdown{
+			Unit:    unitType,
+			Weapons: []*models.WeaponShotBreakdown{},
+		}
+		for weaponType, count := range weapons {
+			unit.Weapons = append(unit.Weapons, &models.WeaponShotBreakdown{
+				WeaponType: weaponType,
+				Count:      count,
+			})
+		}
+		result = append(result, unit)
+	}
+
+	return result
+}
+
+// generateBreakdown generates a breakdown of shots by player
 func generateBreakdown(events []*models.Event) (map[string]map[string]map[string]int, map[string]string) {
 	breakdown := make(map[string]map[string]map[string]int)
 	playerNames := make(map[string]string)
@@ -353,6 +371,7 @@ func generateBreakdown(events []*models.Event) (map[string]map[string]map[string
 
 }
 
+// generatePlayerShotBreakdown generates a slice of PlayerShotBreakdown structs
 func generatePlayerShotBreakdown(breakdown map[string]map[string]map[string]int, playerNames map[string]string) []*models.PlayerShotBreakdown {
 	var result []*models.PlayerShotBreakdown
 
