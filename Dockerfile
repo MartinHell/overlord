@@ -13,8 +13,7 @@ RUN go mod download
 COPY . .
 
 # Generate graphql schema
-RUN go get github.com/99designs/gqlgen@v0.17.47 &&\
-    go run github.com/99designs/gqlgen@v0.17.47 generate
+RUN go run github.com/99designs/gqlgen@v0.17.47 generate
 
 # Build the overlord binary
 RUN go build -o overlord .
