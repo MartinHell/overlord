@@ -53,3 +53,7 @@ go.work
 sqlite.db
 overlord
 overlord-migrate
+
+# Ignore generated code
+graph/generated
+models_gen.go

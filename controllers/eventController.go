@@ -2,61 +2,51 @@ package controllers
 
 import (
 	"io"
-	"net/http"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
-	"github.com/gin-gonic/gin"
 )
-
-/*
-	 func CreateEvent(c *gin.Context) {
-		// Get data off req body
-		var event models.Event
-
-		if err := c.ShouldBindJSON(&event); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Validate data
-
-		// Create player
-		if result := initializers.DB.Create(&event); result.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
-			return
-		}
-
-		// Return player
-		c.JSON(http.StatusOK, gin.H{"message": "Event created successfully!", "event": event})
-	}
-*/
-func GetEvents(c *gin.Context) {
-	var events []models.Event
-
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Find(&events)
-
-	c.JSON(http.StatusOK, gin.H{"events": events})
-}
-
-func GetEvent(c *gin.Context) {
-	var event models.Event
-
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").First(&event, c.Param("id"))
-
-	c.JSON(http.StatusOK, gin.H{
-		"event": event,
-	})
-}
 
 type EventHandler interface {
 	HandleEvent(event *mission.StreamEventsResponse) error
 }
 
 type DCSEventHandler struct{}
+
+func GetEvents() []*models.Event {
+	var events []*models.Event
+
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Find(&events)
+
+	return events
+}
+
+func GetEventsByType(eventType string) []*models.Event {
+	var events []*models.Event
+
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("event = ?", eventType).Find(&events)
+
+	return events
+}
+
+func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
+	var events []*models.Event
+
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
+
+	return events
+}
+
+func GetEvent(id string) *models.Event {
+	var event *models.Event
+
+	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").First(&event, id)
+
+	return event
+}
 
 func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error {
 	// Handle the event here, using the event handler interface
@@ -149,7 +139,7 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 	if u.GetPlayerName() != "" {
 		connectedPlayer.PlayerName = u.PlayerName
 
-		connectedPlayer.GetPlayerUcid()
+		connectedPlayer.GetPlayerFromDB()
 	} else {
 		// If no player is attached to the unit, it's an AI unit
 		connectedPlayer = models.AIPlayer
@@ -191,7 +181,7 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 		if u.GetPlayerName() != "" {
 			connectedPlayer.PlayerName = u.PlayerName
 
-			connectedPlayer.GetPlayerUcid()
+			connectedPlayer.GetPlayerFromDB()
 		} else {
 			// If no player is attached to the unit, it's an AI unit
 			connectedPlayer = models.AIPlayer

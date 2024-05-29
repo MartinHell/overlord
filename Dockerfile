@@ -12,6 +12,9 @@ RUN go mod download
 # Copy the source from the current directory to the Working Directory inside the container
 COPY . .
 
+# Generate graphql schema
+RUN go run github.com/99designs/gqlgen generate
+
 # Build the overlord binary
 RUN go build -o overlord .
 

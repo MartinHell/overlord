@@ -29,10 +29,26 @@ type Event struct {
 	TargetWeapon    Weapon `gorm:"foreignKey:TargetWeaponID;references:WeaponID"`
 }
 
+// Graphql structs used for pagination of events
+type EventConnection struct {
+	PageInfo *PageInfo    `json:"pageInfo"`
+	Edges    []*EventEdge `json:"edges"`
+}
+
+type EventEdge struct {
+	Node   *Event `json:"node"`
+	Cursor string `json:"cursor"`
+}
+
+type PageInfo struct {
+	EndCursor   string `json:"endCursor"`
+	HasNextPage bool   `json:"hasNextPage"`
+}
+
 func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Unit, tw *Weapon) {
 	e.Event = eventType
 	e.Player = *p
-	if e.Initiator.Type != "" {
+	if i.Type != "" {
 		e.Initiator = *i
 	}
 	e.Weapon = *w
@@ -97,46 +113,4 @@ func (e *Event) CreateEvent() error {
 
 		return nil
 	})
-}
-
-func ensurePlayer(tx *gorm.DB, player Player) (*uint, error) {
-	if player.UCID == "" {
-		return nil, nil
-	}
-
-	var existingPlayer Player
-	logs.Sugar.Debugf("Checking or creating Player with UCID: %s", player.UCID)
-	if err := tx.Where("uc_id = ?", player.UCID).FirstOrCreate(&existingPlayer, Player{UCID: player.UCID, PlayerName: player.PlayerName}).Error; err != nil {
-		logs.Sugar.Errorf("Failed to find or create Player: %+v, error: %v", existingPlayer, err)
-		return nil, err
-	}
-	return &existingPlayer.PlayerID, nil
-}
-
-func ensureUnit(tx *gorm.DB, unit Unit, unitType string) (*uint, error) {
-	if unit.Type == "" {
-		return nil, nil
-	}
-
-	var existingUnit Unit
-	logs.Sugar.Debugf("Checking or creating %s with Type: %s", unitType, unit.Type)
-	if err := tx.Where("type = ?", unit.Type).FirstOrCreate(&existingUnit, Unit{Type: unit.Type}).Error; err != nil {
-		logs.Sugar.Errorf("Failed to find or create %s: %+v, error: %v", unitType, existingUnit, err)
-		return nil, err
-	}
-	return &existingUnit.UnitID, nil
-}
-
-func ensureWeapon(tx *gorm.DB, weapon Weapon, weaponType string) (*uint, error) {
-	if weapon.Type == "" {
-		return nil, nil
-	}
-
-	var existingWeapon Weapon
-	logs.Sugar.Debugf("Checking or creating %s with Type: %s", weaponType, weapon.Type)
-	if err := tx.Where("type = ?", weapon.Type).FirstOrCreate(&existingWeapon, Weapon{Type: weapon.Type}).Error; err != nil {
-		logs.Sugar.Errorf("Failed to find or create %s: %+v, error: %v", weaponType, existingWeapon, err)
-		return nil, err
-	}
-	return &existingWeapon.WeaponID, nil
 }

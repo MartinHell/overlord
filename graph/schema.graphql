@@ -1,0 +1,90 @@
+scalar Time
+
+type Event {
+    id: ID!
+    player: Player
+    event: String!
+    initiator: Unit
+    target: Unit
+    weapon: Weapon
+    targetWeapon: Weapon
+    createdAt: Time!
+    updatedAt: Time!
+}
+
+type Player {
+    playerID: ID!
+    createdAt: Time!
+    updatedAt: Time!
+    deletedAt: Time
+    playerName: String
+    ucid: String!
+    ip: String
+}
+
+type Unit {
+    unitID: ID!
+    createdAt: Time!
+    updatedAt: Time!
+    deletedAt: Time
+    type: String!
+}
+
+type Weapon {
+    weaponID: ID!
+    createdAt: Time!
+    updatedAt: Time!
+    deletedAt: Time
+    type: String
+}
+
+type EventConnection {
+    edges: [EventEdge]!
+    pageInfo: PageInfo!
+}
+
+type EventEdge {
+    node: Event!
+    cursor: String!
+}
+
+type PageInfo {
+    endCursor: String
+    hasNextPage: Boolean!
+}
+
+type UnitWeaponBreakdown {
+    unitType: String!
+    weapons: [WeaponShotBreakdown]!
+}
+
+type PlayerShotBreakdown {
+    playerID: ID!
+    playerName: String!
+    units: [UnitShotBreakdown]!
+}
+
+type UnitShotBreakdown {
+    unitType: String!
+    weapons: [WeaponShotBreakdown]!
+}
+
+type WeaponShotBreakdown {
+    weaponType: String!
+    count: Int!
+}
+
+type Query {
+    events(first: Int, after: String, eventType: String): EventConnection
+    event(id: ID!): Event
+    players: [Player]
+    player(id: ID!): Player
+    units: [Unit]
+    unit(id: ID!): Unit
+    weapons: [Weapon]
+    weapon(id: ID!): Weapon
+    healthcheck: String!
+    shotsBreakdown: [UnitWeaponBreakdown]
+    shotsByPlayers: [PlayerShotBreakdown]
+    shotsByPlayer(playerID: ID!): PlayerShotBreakdown
+}
