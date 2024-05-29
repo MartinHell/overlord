@@ -22,11 +22,9 @@ type Event struct {
 	InitiatorUnitID *uint
 	Initiator       Unit `gorm:"foreignKey:InitiatorUnitID;references:UnitID"`
 	TargetID        *uint
-	Target          Unit `gorm:"foreignKey:TargetID;references:UnitID"`
+	Target          Unit `gorm:"foreignKey:TargetID;references:TargetID"`
 	WeaponID        *uint
 	Weapon          Weapon `gorm:"foreignKey:WeaponID;references:WeaponID"`
-	TargetWeaponID  *uint
-	TargetWeapon    Weapon `gorm:"foreignKey:TargetWeaponID;references:WeaponID"`
 }
 
 // Graphql structs used for pagination of events
