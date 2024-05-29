@@ -353,10 +353,9 @@ func generateBreakdown(events []*models.Event) (map[string]map[string]map[string
 
 }
 
-func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotBreakdown, error) {
-	breakdown, playerNames := generateBreakdown(events)
-
+func generatePlayerShotBreakdown(breakdown map[string]map[string]map[string]int, playerNames map[string]string) []*models.PlayerShotBreakdown {
 	var result []*models.PlayerShotBreakdown
+
 	for playerID, units := range breakdown {
 		player := &models.PlayerShotBreakdown{
 			PlayerID:   convertStringToUint(playerID),
@@ -383,6 +382,19 @@ func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotB
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].PlayerName < result[j].PlayerName
 	})
+
+	return result
+}
+
+// GeneratePlayerShotBreakdowns generates a breakdown of shots by player
+// and returns a slice of PlayerShotBreakdown structs
+// Each PlayerShotBreakdown struct contains the player ID, player name, and a slice of UnitShotBreakdown structs
+// Each UnitShotBreakdown struct contains the unit type and a slice of WeaponShotBreakdown structs
+// Each WeaponShotBreakdown struct contains the weapon type and the number of shots fired
+func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotBreakdown, error) {
+	breakdown, playerNames := generateBreakdown(events)
+
+	result := generatePlayerShotBreakdown(breakdown, playerNames)
 
 	return result, nil
 }
