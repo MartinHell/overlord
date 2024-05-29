@@ -319,9 +319,8 @@ func (r *unitWeaponBreakdownResolver) WeaponType(ctx context.Context, obj *model
 
 // Helper functions
 
-func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotBreakdown, error) {
+func generateBreakdown(events []*models.Event) (map[string]map[string]map[string]int, map[string]string) {
 	breakdown := make(map[string]map[string]map[string]int)
-	playerUCIDs := make(map[string]string)
 	playerNames := make(map[string]string)
 
 	for _, event := range events {
@@ -330,10 +329,7 @@ func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotB
 			continue // Skip events without player information
 		}
 
-		fmt.Printf("%+v\n", event)
-		playerUCID := event.Player.UCID
 		playerID := fmt.Sprintf("%d", *event.PlayerID)
-		playerUCIDs[playerID] = playerUCID
 		playerNames[playerID] = *event.Player.PlayerName // Store player name for each player ID
 
 		// Check if unit type and weapon type are present in the event
@@ -352,6 +348,13 @@ func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotB
 		}
 		breakdown[playerID][unitType][weaponType]++
 	}
+
+	return breakdown, playerNames
+
+}
+
+func GeneratePlayerShotBreakdowns(events []*models.Event) ([]*models.PlayerShotBreakdown, error) {
+	breakdown, playerNames := generateBreakdown(events)
 
 	var result []*models.PlayerShotBreakdown
 	for playerID, units := range breakdown {
