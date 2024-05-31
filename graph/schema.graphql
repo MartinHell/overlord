@@ -39,6 +39,7 @@ type Weapon {
 
 type Target {
     targetID: ID!
+    player: Player
     unit: Unit
     weapon: Weapon
 }

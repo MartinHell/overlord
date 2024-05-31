@@ -195,8 +195,16 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 	// Create target
 	target := models.Target{}
 	if p.Target != nil {
-		if p.Target.GetUnit() != nil {
-			target.Unit.FromCommonUnit(p.Target.GetUnit())
+		tgt := p.Target.GetUnit()
+
+		if tgt != nil {
+
+			if tgt.GetPlayerName() != "" {
+				target.Player.PlayerName = tgt.PlayerName
+				target.Player.GetPlayerFromDB()
+			}
+
+			target.Unit.FromCommonUnit(tgt)
 		} else if p.Target.GetWeapon() != nil {
 			target.Weapon.FromCommonWeapon(p.Target.GetWeapon())
 		} else {
