@@ -45,11 +45,15 @@ type PageInfo struct {
 
 func (e *Event) FromStreamEventsResponse(eventType string, p *Player, i *Unit, w *Weapon, t *Target) {
 	e.Event = eventType
-	e.Player = *p
+	if p != nil {
+		e.Player = *p
+	}
 	if i.Type != "" {
 		e.Initiator = *i
 	}
-	e.Weapon = *w
+	if w != nil {
+		e.Weapon = *w
+	}
 	if t != nil {
 		e.Target = *t
 	}
