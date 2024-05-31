@@ -83,6 +83,15 @@ func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error
 			return err
 		}
 		logs.Sugar.Debugf("Kill event processed: %v", inner.Kill)
+
+	case *mission.StreamEventsResponse_Crash:
+		logs.Sugar.Debugf("Crash event: %v", inner.Crash)
+		err := CrashEvent(inner.Crash)
+		if err != nil {
+			return err
+		}
+		logs.Sugar.Debugf("Crash event processed: %v", inner.Crash)
+
 	case *mission.StreamEventsResponse_SimulationFps:
 	default:
 		logs.Sugar.Debugf("Received unknown event type: %T", inner)
@@ -120,6 +129,37 @@ func handleStreamEvents(eventHandler EventHandler) error {
 			logs.Sugar.Errorf("Failed to handle event: %v", err)
 		}
 	}
+}
+
+func CrashEvent(p *mission.StreamEventsResponse_CrashEvent) error {
+	logs.Sugar.Debugf("Crash event: %v", p)
+
+	// Check if player already exists in DB
+	var connectedPlayer models.Player
+
+	u := p.Initiator.GetUnit()
+
+	if u.GetPlayerName() != "" {
+		connectedPlayer.PlayerName = u.PlayerName
+
+		connectedPlayer.GetPlayerFromDB()
+	} else {
+		// If no player is attached to the unit, it's an AI unit
+		connectedPlayer = models.AIPlayer
+	}
+
+	// Create event in DB
+	initiator := models.Unit{}
+
+	initiator.FromCommonUnit(u)
+
+	event := models.Event{}
+
+	event.FromStreamEventsResponse("crash", &connectedPlayer, &initiator, nil, nil)
+
+	event.CreateEvent()
+
+	return nil
 }
 
 func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
