@@ -36,3 +36,12 @@ func ConnectToDB() {
 		logs.Sugar.Fatalf("Failed to connect to %s database: %v", dbType, err)
 	}
 }
+
+func ApplyPreloads(db *gorm.DB) *gorm.DB {
+	return db.Preload("Player").
+		Preload("Initiator").
+		Preload("Target").
+		Preload("Target.Unit").
+		Preload("Target.Weapon").
+		Preload("Weapon")
+}

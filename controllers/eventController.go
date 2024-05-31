@@ -19,7 +19,7 @@ type DCSEventHandler struct{}
 func GetEvents() []*models.Event {
 	var events []*models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Target.Unit").Preload("Target.Weapon").Preload("Weapon").Find(&events)
+	initializers.ApplyPreloads(initializers.DB).Find(&events)
 
 	return events
 }
@@ -27,7 +27,7 @@ func GetEvents() []*models.Event {
 func GetEventsByType(eventType string) []*models.Event {
 	var events []*models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Target.Unit").Preload("Target.Weapon").Preload("Weapon").Where("event = ?", eventType).Find(&events)
+	initializers.ApplyPreloads(initializers.DB).Where("event = ?", eventType).Find(&events)
 
 	return events
 }
@@ -35,7 +35,7 @@ func GetEventsByType(eventType string) []*models.Event {
 func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
 	var events []*models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Target.Unit").Preload("Target.Weapon").Preload("Weapon").Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
+	initializers.ApplyPreloads(initializers.DB).Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
 
 	return events
 }
@@ -43,7 +43,7 @@ func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
 func GetEvent(id string) *models.Event {
 	var event *models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Target.Unit").Preload("Target.Weapon").Preload("Weapon").First(&event, id)
+	initializers.ApplyPreloads(initializers.DB).First(&event, id)
 
 	return event
 }
