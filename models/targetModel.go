@@ -12,8 +12,10 @@ type Target struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
+	PlayerID  uint
 	WeaponID  uint
 	UnitID    uint
+	Player    Player
 	Unit      Unit
 	Weapon    Weapon
 }
