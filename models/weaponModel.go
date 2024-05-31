@@ -19,7 +19,13 @@ type Weapon struct {
 }
 
 func (w *Weapon) FromCommonWeapon(r *common.Weapon) {
-	w.Type = r.Type
+	if r == nil {
+		return
+	}
+
+	if r.Type != "" {
+		w.Type = r.Type
+	}
 }
 
 func (w *Weapon) FindWeaponByType() error {

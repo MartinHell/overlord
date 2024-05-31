@@ -17,6 +17,10 @@ type Unit struct {
 }
 
 func (u *Unit) FromCommonUnit(r *common.Unit) {
+	if r == nil {
+		return
+	}
+
 	if r.Type != "" {
 		u.Type = r.Type
 	}
