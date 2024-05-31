@@ -17,20 +17,24 @@ type Unit struct {
 }
 
 func (u *Unit) FromCommonUnit(r *common.Unit) {
+	if r == nil {
+		return
+	}
+
 	if r.Type != "" {
 		u.Type = r.Type
 	}
 }
 
-func ensureUnit(tx *gorm.DB, unit Unit, unitType string) (*uint, error) {
+func ensureUnit(tx *gorm.DB, unit Unit) (*uint, error) {
 	if unit.Type == "" {
 		return nil, nil
 	}
 
 	var existingUnit Unit
-	logs.Sugar.Debugf("Checking or creating %s with Type: %s", unitType, unit.Type)
+	logs.Sugar.Debugf("Checking or creating unit of Type: %s", unit.Type)
 	if err := tx.Where("type = ?", unit.Type).FirstOrCreate(&existingUnit, Unit{Type: unit.Type}).Error; err != nil {
-		logs.Sugar.Errorf("Failed to find or create %s: %+v, error: %v", unitType, existingUnit, err)
+		logs.Sugar.Errorf("Failed to find or create unit: %+v, error: %v", existingUnit, err)
 		return nil, err
 	}
 	return &existingUnit.UnitID, nil

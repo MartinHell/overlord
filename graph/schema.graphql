@@ -5,9 +5,8 @@ type Event {
     player: Player
     event: String!
     initiator: Unit
-    target: Unit
+    target: Target
     weapon: Weapon
-    targetWeapon: Weapon
     createdAt: Time!
     updatedAt: Time!
 }
@@ -36,6 +35,12 @@ type Weapon {
     updatedAt: Time!
     deletedAt: Time
     type: String
+}
+
+type Target {
+    targetID: ID!
+    unit: Unit
+    weapon: Weapon
 }
 
 type EventConnection {

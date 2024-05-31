@@ -28,6 +28,9 @@ models:
   Weapon:
     model:
       - github.com/MartinHell/overlord/models.Weapon
+  Target:
+    model:
+      - github.com/MartinHell/overlord/models.Target
   EventConnection:
     model:
       - github.com/MartinHell/overlord/models.EventConnection

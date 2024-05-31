@@ -19,7 +19,7 @@ type DCSEventHandler struct{}
 func GetEvents() []*models.Event {
 	var events []*models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Find(&events)
+	initializers.ApplyPreloads(initializers.DB).Find(&events)
 
 	return events
 }
@@ -27,7 +27,7 @@ func GetEvents() []*models.Event {
 func GetEventsByType(eventType string) []*models.Event {
 	var events []*models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("event = ?", eventType).Find(&events)
+	initializers.ApplyPreloads(initializers.DB).Where("event = ?", eventType).Find(&events)
 
 	return events
 }
@@ -35,7 +35,7 @@ func GetEventsByType(eventType string) []*models.Event {
 func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
 	var events []*models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
+	initializers.ApplyPreloads(initializers.DB).Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
 
 	return events
 }
@@ -43,7 +43,7 @@ func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
 func GetEvent(id string) *models.Event {
 	var event *models.Event
 
-	initializers.DB.Preload("Player").Preload("Initiator").Preload("Target").Preload("Weapon").First(&event, id)
+	initializers.ApplyPreloads(initializers.DB).First(&event, id)
 
 	return event
 }
@@ -152,7 +152,7 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 
 	event := models.Event{}
 
-	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil, nil)
+	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil)
 
 	event.CreateEvent()
 
@@ -193,13 +193,12 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 	// Create event in DB
 
 	// Create target
-	target := models.Unit{}
-	targetWeapon := models.Weapon{}
+	target := models.Target{}
 	if p.Target != nil {
 		if p.Target.GetUnit() != nil {
-			target.FromCommonUnit(p.Target.GetUnit())
+			target.Unit.FromCommonUnit(p.Target.GetUnit())
 		} else if p.Target.GetWeapon() != nil {
-			targetWeapon.Type = p.Target.GetWeapon().GetType()
+			target.Weapon.FromCommonWeapon(p.Target.GetWeapon())
 		} else {
 			// TODO: Handle more target types
 			logs.Sugar.Debugf("Unknown target type: %v", p.Target)
@@ -208,7 +207,7 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 
 	event := models.Event{}
 
-	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target, &targetWeapon)
+	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target)
 
 	event.CreateEvent()
 
