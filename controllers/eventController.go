@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"io"
+	"math"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
@@ -103,6 +104,10 @@ func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error
 func StreamEvents() {
 	var eventHandler EventHandler = &DCSEventHandler{}
 
+	baseDelay := 5 * time.Second
+	maxDelay := 300 * time.Second
+	retryCount := 0
+
 	for {
 		err := handleStreamEvents(eventHandler)
 		if err == io.EOF {
@@ -111,9 +116,19 @@ func StreamEvents() {
 			logs.Sugar.Errorf("Failed to receive event: %v, retrying...", err)
 		}
 
-		// Wait before retrying to avoid tight loop
-		time.Sleep(5 * time.Second)
+		retryDuration := exponentialBackoff(retryCount, baseDelay, maxDelay)
+		logs.Sugar.Warnf("Retrying in %v", retryDuration)
+		time.Sleep(retryDuration)
+		retryCount++
 	}
+}
+
+func exponentialBackoff(attempt int, base, max time.Duration) time.Duration {
+	delay := float64(base) * math.Pow(2, float64(attempt))
+	if delay > float64(max) {
+		return max
+	}
+	return time.Duration(delay)
 }
 
 func handleStreamEvents(eventHandler EventHandler) error {
