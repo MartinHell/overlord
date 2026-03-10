@@ -207,7 +207,7 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 	var weapon models.Weapon
 	if p.Weapon != nil {
 		weapon.Type = p.Weapon.Type
-	} else {
+	} else if p.WeaponName != nil {
 		weapon.Type = *p.WeaponName
 	}
 
