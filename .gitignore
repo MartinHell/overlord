@@ -50,6 +50,10 @@ go.work
 ./overlord
 ./overlord-migrate
 .aider*
+# Local databases
+*.db
+*.db-wal
+*.db-shm
 sqlite.db
 overlord
 overlord-migrate
