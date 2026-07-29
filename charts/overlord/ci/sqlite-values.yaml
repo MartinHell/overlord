@@ -1,0 +1,19 @@
+# Values used by chart-testing (ct install) in CI.
+#
+# The install job was previously disabled because there was no way to provide a
+# database: Postgres would have to be stood up in the cluster, and the SQLite
+# driver needed cgo. The driver is now pure Go, so SQLite works in the container
+# and the chart can be smoke-tested without any external dependency.
+#
+# This verifies that the chart renders, the pod starts and the health endpoint
+# answers. It does not exercise the database beyond opening it.
+overlord:
+  db_type: sqlite
+  db_url: "/app/overlord.db"
+  # Nothing is listening. Overlord is expected to start anyway and retry with
+  # backoff, which is precisely the behaviour worth asserting: it must not
+  # require DCS to be up in order to boot.
+  grpc_server_address: "127.0.0.1:50051"
+  environment: production
+  log_level: info
+  log_encoding: json
