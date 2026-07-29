@@ -43,6 +43,12 @@ models:
   CoalitionKills:
     model:
       - github.com/MartinHell/overlord/models.CoalitionKills
+  UnitProfile:
+    model:
+      - github.com/MartinHell/overlord/models.UnitProfileView
+  WeaponProfile:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponProfileView
   WeaponEffectiveness:
     model:
       - github.com/MartinHell/overlord/models.WeaponEffectiveness

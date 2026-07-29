@@ -35,6 +35,13 @@ const EV_CLASS = {
 
 // --- state -----------------------------------------------------------------
 
+// DCS type identifier -> readable name, built from the units and weapons
+// queries. Falls back to the raw identifier so an unnamed type still renders.
+const names = { unit: new Map(), weapon: new Map() };
+
+const unitName = (t) => names.unit.get(t) || shortStore(t || "");
+const weaponName = (t) => names.weapon.get(t) || shortStore(t || "");
+
 const state = {
   data: null,
   log: null,
@@ -59,6 +66,8 @@ const QUERY = `{
   shotsByPlayers { playerID playerName units { unitType weapons { weaponType count } } }
   playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
   landingGrades(first: 40) { playerName unitType place grade missionTime }
+  units { type displayName }
+  weapons { type displayName }
 }`;
 
 // The log is filtered by the database, not in the browser. Filtering 200
@@ -158,6 +167,14 @@ function storeClass(row) {
   return "collision";
 }
 
+// A name that opens a reference card. The DCS identifier travels in a data
+// attribute so the card can be looked up and linked to.
+function ref(kind, type) {
+  if (!type) return `<span class="zero">—</span>`;
+  const label = kind === "unit" ? unitName(type) : weaponName(type);
+  return `<span class="ref" data-ref="${kind}" data-type="${esc(type)}" role="button" tabindex="0">${esc(label)}</span>`;
+}
+
 function shortStore(name) {
   return name.replace(/^weapons\.shells\./, "");
 }
@@ -246,7 +263,7 @@ function drawWeapons(rows) {
     ],
     sortRows(filtered, "weapons"),
     (r) => `<tr>
-      <td class="name">${esc(shortStore(r.weaponType))}</td>
+      <td class="name">${ref("weapon", r.weaponType)}</td>
       <td class="num">${
         r.shots ? `<span class="bar" style="width:${(r.shots / max) * 44}px"></span>${r.shots}` : num(0)
       }</td>
@@ -301,7 +318,7 @@ function drawTraps(rows) {
     (r) => `<tr>
       <td class="num">${clock(r.missionTime)}</td>
       <td class="name">${esc(r.playerName || "—")}</td>
-      <td>${esc(r.unitType || "—")}</td>
+      <td>${r.unitType ? ref("unit", r.unitType) : "—"}</td>
       <td>${esc(r.place || "—")}</td>
       <td class="grade">${esc(r.grade || "—")}</td>
     </tr>`
@@ -338,8 +355,8 @@ function drawLoadout(players) {
     sortRows(filtered, "loadout"),
     (r) => `<tr>
       <td class="name">${esc(r.playerName)}</td>
-      <td>${esc(r.unitType)}</td>
-      <td>${esc(shortStore(r.weaponType))}</td>
+      <td>${ref("unit", r.unitType)}</td>
+      <td>${ref("weapon", r.weaponType)}</td>
       <td class="num"><span class="bar" style="width:${(r.shots / max) * 44}px"></span>${r.shots}</td>
     </tr>`
   );
@@ -387,7 +404,7 @@ function drawLog(connection) {
       const actor = n.initiatorCallsign || n.initiatorName || n.player?.playerName || "—";
 
       const target = n.targetType
-        ? esc(n.targetType) +
+        ? ref("unit", n.targetType) +
           (n.target?.kind && n.target.kind !== "unit"
             ? ` <span class="zero">${esc(n.target.kind)}</span>`
             : "")
@@ -397,8 +414,8 @@ function drawLog(connection) {
         <td class="num">${clock(n.missionTime)}</td>
         <td><span class="ev ${EV_CLASS[n.event] || "ev-sortie"}">${esc(n.event)}</span></td>
         <td class="name">${side}${esc(actor)}</td>
-        <td>${esc(n.initiatorType || "—")}</td>
-        <td>${n.weaponType ? esc(shortStore(n.weaponType)) : `<span class="zero">—</span>`}</td>
+        <td>${n.initiatorType ? ref("unit", n.initiatorType) : "—"}</td>
+        <td>${n.weaponType ? ref("weapon", n.weaponType) : `<span class="zero">—</span>`}</td>
         <td>${target}${n.place ? ` <span class="zero">${esc(n.place)}</span>` : ""}</td>
       </tr>`;
     }
@@ -410,6 +427,9 @@ function drawLog(connection) {
 function draw() {
   const d = state.data;
   if (!d) return;
+
+  for (const u of d.units || []) names.unit.set(u.type, u.displayName);
+  for (const w of d.weapons || []) names.weapon.set(w.type, w.displayName);
 
   drawCoalition(d.killsByCoalition || []);
   drawWeapons(d.weaponEffectiveness || []);
@@ -456,6 +476,150 @@ async function refreshLog() {
     el("foot").textContent = `${err.message} — check that overlord is reachable at ${API_URL}`;
   }
 }
+
+// --- reference card --------------------------------------------------------
+
+const CARD_UNIT = `query($t: String!) { unitProfile(type: $t) {
+  type curated name nickname role origin maker blurb
+  sorties shots hits kills losses ejections timesKilled
+  stores { weaponType count }
+} }`;
+
+const CARD_WEAPON = `query($t: String!) { weaponProfile(type: $t) {
+  type curated name nickname role origin maker blurb
+  shots hits kills hitsPerShot killsPerShot
+  carriers { unitType weapons { count } }
+} }`;
+
+async function gqlVars(query, variables) {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const body = await res.json();
+  if (body.errors) throw new Error(body.errors.map((e) => e.message).join("; "));
+  return body.data;
+}
+
+function fact(label, value, big) {
+  return `<div><dt>${esc(label)}</dt><dd${big ? ' class="big"' : ""}>${esc(value)}</dd></div>`;
+}
+
+function identityFacts(p) {
+  const rows = [];
+  if (p.role) rows.push(fact("role", p.role));
+  if (p.origin) rows.push(fact("origin", p.origin));
+  if (p.maker) rows.push(fact("built by", p.maker));
+  if (p.nickname) rows.push(fact("known as", p.nickname));
+  return rows.join("");
+}
+
+// Said plainly rather than dressed up: reference text is curated by hand and
+// carries no performance figures, so the card should not imply otherwise.
+function provenance(p) {
+  return p.curated
+    ? ""
+    : `<p class="card-uncurated">No reference entry for <code>${esc(p.type)}</code> yet — the name above is derived from the DCS identifier. Everything below is measured from recorded events.</p>`;
+}
+
+async function openCard(kind, type) {
+  const wrap = el("card");
+  el("card-name").textContent = kind === "unit" ? unitName(type) : weaponName(type);
+  el("card-sub").textContent = type;
+  el("card-body").innerHTML = `<p class="card-blurb">Loading…</p>`;
+  wrap.hidden = false;
+  el("card-close").focus();
+  location.hash = `#/${kind}/${encodeURIComponent(type)}`;
+
+  try {
+    if (kind === "unit") {
+      const p = (await gqlVars(CARD_UNIT, { t: type })).unitProfile;
+      if (!p) throw new Error("no profile");
+
+      el("card-name").textContent = p.name;
+      el("card-sub").textContent = `${p.type}${p.role ? " · " + p.role : ""}`;
+
+      el("card-body").innerHTML =
+        (p.blurb ? `<p class="card-blurb">${esc(p.blurb)}</p>` : "") +
+        provenance(p) +
+        `<dl class="card-facts">${identityFacts(p)}</dl>` +
+        `<h4>recorded</h4>` +
+        `<dl class="card-facts">
+          ${fact("sorties", p.sorties, true)}
+          ${fact("shots", p.shots, true)}
+          ${fact("hits scored", p.hits, true)}
+          ${fact("splash", p.kills, true)}
+          ${fact("lost", p.losses)}
+          ${fact("ejections", p.ejections)}
+          ${fact("destroyed as target", p.timesKilled)}
+        </dl>` +
+        (p.stores.length
+          ? `<h4>stores expended</h4><div class="tw"><table class="grid"><tbody>${p.stores
+              .map((s) => `<tr><td>${ref("weapon", s.weaponType)}</td><td class="num">${s.count}</td></tr>`)
+              .join("")}</tbody></table></div>`
+          : `<h4>stores expended</h4><p class="none">Nothing recorded.</p>`);
+    } else {
+      const p = (await gqlVars(CARD_WEAPON, { t: type })).weaponProfile;
+      if (!p) throw new Error("no profile");
+
+      el("card-name").textContent = p.name;
+      el("card-sub").textContent = `${p.type}${p.role ? " · " + p.role : ""}`;
+
+      el("card-body").innerHTML =
+        (p.blurb ? `<p class="card-blurb">${esc(p.blurb)}</p>` : "") +
+        provenance(p) +
+        `<dl class="card-facts">${identityFacts(p)}</dl>` +
+        `<h4>recorded</h4>` +
+        `<dl class="card-facts">
+          ${fact("shots", p.shots, true)}
+          ${fact("hits", p.hits, true)}
+          ${fact("splash", p.kills, true)}
+          ${fact("hits / shot", p.shots ? p.hitsPerShot.toFixed(2) : "—")}
+          ${fact("kills / shot", p.shots ? p.killsPerShot.toFixed(2) : "—")}
+        </dl>` +
+        (p.carriers.length
+          ? `<h4>carried by</h4><div class="tw"><table class="grid"><tbody>${p.carriers
+              .map((c) => `<tr><td>${ref("unit", c.unitType)}</td><td class="num">${c.weapons[0]?.count ?? 0}</td></tr>`)
+              .join("")}</tbody></table></div>`
+          : `<h4>carried by</h4><p class="none">Nothing recorded.</p>`);
+    }
+  } catch (err) {
+    el("card-body").innerHTML = `<p class="card-uncurated">Could not load this card: ${esc(err.message)}</p>`;
+  }
+}
+
+function closeCard() {
+  el("card").hidden = true;
+  if (location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname);
+}
+
+// One listener for the whole document, so it survives every table redraw.
+document.addEventListener("click", (e) => {
+  const r = e.target.closest(".ref");
+  if (r) {
+    openCard(r.dataset.ref, r.dataset.type);
+    return;
+  }
+  if (e.target.id === "card-close" || e.target.id === "card") closeCard();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !el("card").hidden) closeCard();
+  const r = document.activeElement?.closest?.(".ref");
+  if (r && (e.key === "Enter" || e.key === " ")) {
+    e.preventDefault();
+    openCard(r.dataset.ref, r.dataset.type);
+  }
+});
+
+// Deep links: #/unit/F-15C opens that card directly.
+function openFromHash() {
+  const m = location.hash.match(/^#\/(unit|weapon)\/(.+)$/);
+  if (m) openCard(m[1], decodeURIComponent(m[2]));
+}
+window.addEventListener("hashchange", openFromHash);
 
 // --- wiring ----------------------------------------------------------------
 
@@ -517,5 +681,5 @@ themeBtn.addEventListener("click", () => {
   applyTheme(next);
 });
 
-refresh();
+refresh().then(openFromHash);
 schedule();

@@ -286,3 +286,145 @@ func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
 
 	return result, nil
 }
+
+// GetUnitProfile assembles the reference card for one unit type: curated
+// identity plus everything the events table knows about it.
+func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {
+	if unitType == "" {
+		return nil, nil
+	}
+
+	profile, curated := models.UnitProfile(unitType)
+
+	view := &models.UnitProfileView{
+		Type: unitType, Curated: curated,
+		Name: profile.Name, Nickname: profile.Nickname, Role: profile.Role,
+		Origin: profile.Origin, Maker: profile.Maker, Blurb: profile.Blurb,
+	}
+
+	// One pass over the events for this airframe, counted by kind.
+	var totals struct {
+		Sorties, Shots, Hits, Kills, Losses, Ejections int
+	}
+
+	err := initializers.DB.Model(&models.Event{}).
+		Select(`SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
+			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
+			SUM(CASE WHEN events.event = 'hit' THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill' THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event IN ('crash','dead','unit_lost','pilot_dead') THEN 1 ELSE 0 END) AS losses,
+			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections`).
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where("units.type = ?", unitType).
+		Scan(&totals).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to aggregate unit profile for %q: %v", unitType, err)
+		return nil, err
+	}
+
+	view.Sorties = totals.Sorties
+	view.Shots = totals.Shots
+	view.Hits = totals.Hits
+	view.Kills = totals.Kills
+	view.Losses = totals.Losses
+	view.Ejections = totals.Ejections
+
+	// How often it was on the receiving end, which the initiator counts above
+	// cannot show.
+	var killed int64
+	if err := initializers.DB.Model(&models.Event{}).
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("JOIN units ON units.unit_id = targets.unit_id").
+		Where("events.event = ? AND units.type = ?", "kill", unitType).
+		Count(&killed).Error; err != nil {
+		logs.Sugar.Errorf("Failed to count losses for %q: %v", unitType, err)
+		return nil, err
+	}
+	view.TimesKilled = int(killed)
+
+	// What it shoots.
+	var stores []struct {
+		WeaponType string
+		Total      int
+	}
+	if err := initializers.DB.Model(&models.Event{}).
+		Select("weapons.type AS weapon_type, COUNT(*) AS total").
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Where("events.event = ? AND units.type = ?", "shot", unitType).
+		Group("weapons.type").
+		Order("total DESC, weapons.type").
+		Scan(&stores).Error; err != nil {
+		logs.Sugar.Errorf("Failed to list stores for %q: %v", unitType, err)
+		return nil, err
+	}
+
+	for _, s := range stores {
+		view.Stores = append(view.Stores, &models.WeaponShotBreakdown{WeaponType: s.WeaponType, Count: s.Total})
+	}
+
+	return view, nil
+}
+
+// GetWeaponProfile assembles the reference card for one store.
+func GetWeaponProfile(weaponType string) (*models.WeaponProfileView, error) {
+	if weaponType == "" {
+		return nil, nil
+	}
+
+	profile, curated := models.WeaponProfile(weaponType)
+
+	view := &models.WeaponProfileView{
+		Type: weaponType, Curated: curated,
+		Name: profile.Name, Nickname: profile.Nickname, Role: profile.Role,
+		Origin: profile.Origin, Maker: profile.Maker, Blurb: profile.Blurb,
+	}
+
+	var totals models.WeaponEffectiveness
+	err := initializers.DB.Model(&models.Event{}).
+		Select(`SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
+			SUM(CASE WHEN events.event = 'hit'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills`).
+		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("weapons.type = ?", weaponType).
+		Scan(&totals).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to aggregate weapon profile for %q: %v", weaponType, err)
+		return nil, err
+	}
+
+	view.Shots = totals.Shots
+	view.Hits = totals.Hits
+	view.Kills = totals.Kills
+	view.HitsPerShot = totals.HitsPerShot()
+	view.KillsPerShot = totals.KillsPerShot()
+
+	// Who carries it.
+	var carriers []struct {
+		UnitType string
+		Total    int
+	}
+	if err := initializers.DB.Model(&models.Event{}).
+		Select("units.type AS unit_type, COUNT(*) AS total").
+		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where("events.event = ? AND weapons.type = ?", "shot", weaponType).
+		Group("units.type").
+		Order("total DESC, units.type").
+		Scan(&carriers).Error; err != nil {
+		logs.Sugar.Errorf("Failed to list carriers for %q: %v", weaponType, err)
+		return nil, err
+	}
+
+	for _, c := range carriers {
+		view.Carriers = append(view.Carriers, &models.UnitShotBreakdown{UnitType: c.UnitType})
+		view.Carriers[len(view.Carriers)-1].Weapons = []*models.WeaponShotBreakdown{
+			{WeaponType: weaponType, Count: c.Total},
+		}
+	}
+
+	return view, nil
+}

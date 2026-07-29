@@ -84,3 +84,48 @@ type WeaponShotBreakdown struct {
 	WeaponType string
 	Count      int
 }
+
+// UnitProfileView is a reference card for one airframe or vehicle type, with
+// everything overlord has actually recorded about it.
+type UnitProfileView struct {
+	Type string
+	// Curated reports whether the reference data is from the table or was
+	// derived mechanically from the DCS identifier.
+	Curated  bool
+	Name     string
+	Nickname string
+	Role     string
+	Origin   string
+	Maker    string
+	Blurb    string
+
+	// Recorded, not reference: everything below comes from the events table.
+	Sorties     int
+	Shots       int
+	Hits        int
+	Kills       int
+	Losses      int
+	Ejections   int
+	TimesKilled int
+	Stores      []*WeaponShotBreakdown
+}
+
+// WeaponProfileView is the same idea for a store.
+type WeaponProfileView struct {
+	Type     string
+	Curated  bool
+	Name     string
+	Nickname string
+	Role     string
+	Origin   string
+	Maker    string
+	Blurb    string
+
+	Shots        int
+	Hits         int
+	Kills        int
+	HitsPerShot  float64
+	KillsPerShot float64
+	// Carriers are the airframes seen firing it, busiest first.
+	Carriers []*UnitShotBreakdown
+}

@@ -336,6 +336,88 @@ table.grid {
 
 .none { color: var(--faint); font-family: var(--sans); font-style: italic; padding: 0.5rem 0; }
 
+/* ---- reference card ---- */
+
+.card-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem;
+  background: color-mix(in srgb, var(--ground) 82%, transparent);
+  overflow-y: auto;
+}
+.card-wrap[hidden] { display: none; }
+
+.card {
+  width: min(760px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--rule-hard);
+  border-top: 2px solid var(--amber);
+  padding: 1rem 1.15rem 1.25rem;
+}
+
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+.card-sub {
+  margin: 0.15rem 0 0;
+  color: var(--dim);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.card-blurb {
+  font-family: var(--sans);
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0.9rem 0 0;
+  max-width: 68ch;
+}
+.card-uncurated {
+  font-family: var(--sans);
+  font-size: 0.76rem;
+  color: var(--warn);
+  margin: 0.7rem 0 0;
+}
+
+.card-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem 1.1rem;
+  margin: 1rem 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+.card-facts div { display: flex; flex-direction: column; }
+.card-facts dt { color: var(--dim); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; }
+.card-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.card-facts dd.big { font-size: 1.2rem; color: var(--amber); }
+
+.card h4 {
+  margin: 1.2rem 0 0.5rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 400;
+}
+
+/* Names that open a reference card look interactive. */
+.ref {
+  color: var(--ink);
+  cursor: pointer;
+  border-bottom: 1px dotted var(--faint);
+}
+.ref:hover { color: var(--amber); border-bottom-color: var(--amber); }
+
 footer {
   padding: 0.8rem 1rem 2rem;
   color: var(--faint);

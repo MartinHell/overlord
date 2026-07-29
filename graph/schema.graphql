@@ -39,6 +39,54 @@ type Event {
     updatedAt: Time!
 }
 
+"""
+Reference card for an airframe or vehicle: identity plus everything recorded
+about it. Identity is curated, and carries no performance figures on purpose --
+they would have to be sourced rather than recalled.
+"""
+type UnitProfile {
+    type: String!
+    "False when the identity below was derived from the DCS identifier rather than curated."
+    curated: Boolean!
+    name: String!
+    nickname: String
+    role: String
+    origin: String
+    maker: String
+    blurb: String
+
+    sorties: Int!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    losses: Int!
+    ejections: Int!
+    "How often this type was itself destroyed."
+    timesKilled: Int!
+    "What it fires, busiest first."
+    stores: [WeaponShotBreakdown!]!
+}
+
+"Reference card for a store, with what carried it and how it performed."
+type WeaponProfile {
+    type: String!
+    curated: Boolean!
+    name: String!
+    nickname: String
+    role: String
+    origin: String
+    maker: String
+    blurb: String
+
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    hitsPerShot: Float!
+    killsPerShot: Float!
+    "Airframes and vehicles seen firing it, busiest first."
+    carriers: [UnitShotBreakdown!]!
+}
+
 "Shots against hits against kills for one weapon type."
 type WeaponEffectiveness {
     weaponType: String!
@@ -93,6 +141,8 @@ type Player {
 
 type Unit {
     unitID: ID!
+    "Readable name for the DCS type, curated where known and derived otherwise."
+    displayName: String!
     createdAt: Time!
     updatedAt: Time!
     deletedAt: Time
@@ -101,6 +151,8 @@ type Unit {
 
 type Weapon {
     weaponID: ID!
+    "Readable name for the DCS type, curated where known and derived otherwise."
+    displayName: String!
     createdAt: Time!
     updatedAt: Time!
     deletedAt: Time
@@ -163,6 +215,10 @@ type Query {
     playerActivity: [PlayerActivity!]!
     "Recent graded landings, newest first."
     landingGrades(first: Int): [LandingGrade!]!
+    "Reference card and recorded stats for one airframe or vehicle type."
+    unitProfile(type: String!): UnitProfile
+    "Reference card and recorded stats for one store."
+    weaponProfile(type: String!): WeaponProfile
     event(id: ID!): Event
     players: [Player]
     player(id: ID!): Player

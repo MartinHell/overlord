@@ -114,6 +114,16 @@ func (r *queryResolver) LandingGrades(ctx context.Context, first *int) ([]*model
 	return controllers.GetLandingGrades(limit)
 }
 
+// UnitProfile is the resolver for the unitProfile field.
+func (r *queryResolver) UnitProfile(ctx context.Context, typeArg string) (*models.UnitProfileView, error) {
+	return controllers.GetUnitProfile(typeArg)
+}
+
+// WeaponProfile is the resolver for the weaponProfile field.
+func (r *queryResolver) WeaponProfile(ctx context.Context, typeArg string) (*models.WeaponProfileView, error) {
+	return controllers.GetWeaponProfile(typeArg)
+}
+
 // Event is the resolver for the event field.
 func (r *queryResolver) Event(ctx context.Context, id string) (*models.Event, error) {
 	return controllers.GetEvent(id), nil
@@ -187,6 +197,12 @@ func (r *unitResolver) UnitID(ctx context.Context, obj *models.Unit) (string, er
 	return fmt.Sprintf("%v", obj.UnitID), nil
 }
 
+// DisplayName is the resolver for the displayName field.
+func (r *unitResolver) DisplayName(ctx context.Context, obj *models.Unit) (string, error) {
+	profile, _ := models.UnitProfile(obj.Type)
+	return profile.Name, nil
+}
+
 // DeletedAt is the resolver for the deletedAt field.
 func (r *unitResolver) DeletedAt(ctx context.Context, obj *models.Unit) (*time.Time, error) {
 	if obj.DeletedAt.Valid {
@@ -203,6 +219,12 @@ func (r *unitWeaponBreakdownResolver) UnitType(ctx context.Context, obj *models.
 // WeaponID is the resolver for the weaponID field.
 func (r *weaponResolver) WeaponID(ctx context.Context, obj *models.Weapon) (string, error) {
 	return fmt.Sprintf("%v", obj.WeaponID), nil
+}
+
+// DisplayName is the resolver for the displayName field.
+func (r *weaponResolver) DisplayName(ctx context.Context, obj *models.Weapon) (string, error) {
+	profile, _ := models.WeaponProfile(obj.Type)
+	return profile.Name, nil
 }
 
 // DeletedAt is the resolver for the deletedAt field.
