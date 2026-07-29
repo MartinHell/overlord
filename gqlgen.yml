@@ -40,6 +40,9 @@ models:
   PageInfo:
     model:
       - github.com/MartinHell/overlord/models.PageInfo
+  CoalitionKills:
+    model:
+      - github.com/MartinHell/overlord/models.CoalitionKills
   UnitWeaponBreakdown:
     model:
       - github.com/MartinHell/overlord/models.UnitWeaponBreakdown

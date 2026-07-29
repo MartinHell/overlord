@@ -3,12 +3,27 @@ scalar Time
 type Event {
     id: ID!
     player: Player
+    "One of: shot, hit, kill, crash, unit_lost, pilot_dead."
     event: String!
+    "DCS mission clock in seconds when the event happened. Zero for events recorded before this was captured."
+    missionTime: Float!
+    "Coalition of the initiator when the event happened: red, blue, neutral or unknown."
+    coalition: String
     initiator: Unit
+    "What the initiator was: unit, weapon, static, scenery, airbase or unknown."
+    initiatorKind: String
     target: Target
+    "Coalition of the target. Equal to coalition means a teamkill."
+    targetCoalition: String
     weapon: Weapon
     createdAt: Time!
     updatedAt: Time!
+}
+
+type CoalitionKills {
+    coalition: String!
+    kills: Int!
+    teamkills: Int!
 }
 
 type Player {
@@ -39,6 +54,8 @@ type Weapon {
 
 type Target {
     targetID: ID!
+    "What was hit: unit, weapon, static, scenery, airbase or unknown."
+    kind: String
     player: Player
     unit: Unit
     weapon: Weapon
@@ -81,7 +98,10 @@ type WeaponShotBreakdown {
 }
 
 type Query {
-    events(first: Int, after: String, eventType: String): EventConnection
+    "Omit coalition to get both sides at once; pass red or blue to narrow."
+    events(first: Int, after: String, eventType: String, coalition: String): EventConnection
+    "Kill tally per coalition, covering both sides."
+    killsByCoalition: [CoalitionKills!]!
     event(id: ID!): Event
     players: [Player]
     player(id: ID!): Player

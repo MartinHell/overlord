@@ -12,17 +12,15 @@ import (
 var Sugar *zap.SugaredLogger
 
 func init() {
-	// Load environment variables from .env file
-	err := godotenv.Load()
-	if err != nil {
-		panic("Failed to load .env file: " + err.Error())
-	}
+	// A .env file is optional. Under Docker and Kubernetes the configuration
+	// comes from the real environment, and requiring the file there is what
+	// forced the entrypoint script to fabricate one.
+	_ = godotenv.Load()
 
 	logger, err := InitLogger()
 	if err != nil {
 		panic("Failed to initialize logger: " + err.Error())
 	}
-	defer logger.Sync() // flushes buffer, if any
 
 	Sugar = logger.Sugar()
 }

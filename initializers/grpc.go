@@ -3,7 +3,6 @@ package initializers
 import (
 	"context"
 	"os"
-	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
@@ -14,13 +13,15 @@ import (
 
 var NetServiceClient net.NetServiceClient
 
-var StreamEventsClient mission.MissionService_StreamEventsClient
+var MissionServiceClient mission.MissionServiceClient
 
 var GrpcClientConn *grpc.ClientConn
 
-func InitGrpc() {
-
-	var addr = os.Getenv("GRPC_SERVER_ADDRESS")
+func InitGrpc() error {
+	addr := os.Getenv("GRPC_SERVER_ADDRESS")
+	if addr == "" {
+		addr = "127.0.0.1:50051"
+	}
 
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(
@@ -28,29 +29,26 @@ func InitGrpc() {
 		),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+	// The dial is lazy: it does not fail when DCS is down, it reconnects in the
+	// background instead. That is what we want, since overlord is expected to
+	// outlive any single DCS session.
 	var err error
-	GrpcClientConn, err = grpc.DialContext(ctx, addr, opts...)
+	GrpcClientConn, err = grpc.Dial(addr, opts...)
 	if err != nil {
-		logs.Sugar.Panicf("Failed to connect to server: %v", err)
+		return err
 	}
 
-	logs.Sugar.Infoln("Connected to server")
+	MissionServiceClient = mission.NewMissionServiceClient(GrpcClientConn)
+	NetServiceClient = net.NewNetServiceClient(GrpcClientConn)
 
-	missionClient := mission.NewMissionServiceClient(GrpcClientConn)
-	StreamEventsClient, err = missionClient.StreamEvents(context.Background(), &mission.StreamEventsRequest{})
-	if err != nil {
-		logs.Sugar.Panicf("Failed to open events stream: %v", err)
-	}
+	logs.Sugar.Infof("gRPC client configured for %s", addr)
 
-	logs.Sugar.Infoln("Got mission client")
+	return nil
+}
 
-	NetServiceClient = net.NewNetServiceClient(GrpcClientConn) // Fix: Create a new instance of net.NetServiceClient
-	if err != nil {
-		logs.Sugar.Panicf("Failed to create NetServiceClient: %v", err)
-	}
-
-	logs.Sugar.Infoln("Got net client")
+// OpenEventStream opens a new StreamEvents stream. A gRPC stream cannot be
+// reused once it has returned an error, so callers must open a fresh one on
+// every reconnect rather than holding on to a single long-lived stream.
+func OpenEventStream(ctx context.Context) (mission.MissionService_StreamEventsClient, error) {
+	return MissionServiceClient.StreamEvents(ctx, &mission.StreamEventsRequest{})
 }

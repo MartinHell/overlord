@@ -2,6 +2,8 @@ package models
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
@@ -28,30 +30,72 @@ type Player struct {
 	//UnitID     uint
 }
 
-var aiPlayerName = "AI-Unit"
+// aiUCIDPrefix marks the synthetic players that stand in for AI units. Real
+// UCIDs are 32-character hex strings, so this cannot collide with one.
+const aiUCIDPrefix = "ai-"
 
-var AIPlayer = Player{
-	PlayerName: &aiPlayerName,
-	UCID:       "0",
+// AIPlayerFor returns the synthetic player representing AI units of a given
+// coalition. AI is tracked per coalition so that red and blue AI show up as
+// separate players and their kills can be counted against each other.
+func AIPlayerFor(coalition string) Player {
+	if coalition == "" {
+		coalition = CoalitionUnknown
+	}
+
+	name := "AI-Unit (" + coalition + ")"
+
+	return Player{
+		PlayerName: &name,
+		UCID:       aiUCIDPrefix + coalition,
+	}
 }
 
+// IsAIPlayerName reports whether a name belongs to one of the synthetic AI
+// players rather than a human who might appear in the DCS player list.
+func IsAIPlayerName(name string) bool {
+	return strings.HasPrefix(name, "AI-Unit")
+}
+
+// coalitionFromAIName recovers the coalition from a synthetic AI player name,
+// the inverse of the name built by AIPlayerFor.
+func coalitionFromAIName(name string) string {
+	open := strings.Index(name, "(")
+	close := strings.LastIndex(name, ")")
+	if open < 0 || close < open {
+		return CoalitionUnknown
+	}
+	return name[open+1 : close]
+}
+
+// GetPlayerFromDB resolves the player's UCID from the DCS player list and, if
+// they are already stored, fills in the rest of the record from the database.
+// A player who cannot be resolved is left as-is rather than treated as an error:
+// events routinely arrive after the player behind them has disconnected.
 func (p *Player) GetPlayerFromDB() error {
-	// Check if player is in DB
-	var playerCache PlayerCache
+	if err := p.GetPlayerUcidByName(); err != nil {
+		return err
+	}
 
-	playerCache.RefreshPlayersCache()
-	playerLookup := *playerCache.FindPlayerByName(*p.PlayerName)
+	if p.UCID == "" {
+		return nil
+	}
 
-	if playerLookup.GetUcid() != "" {
-		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(p)
-		if result.Error != nil && result.Error.Error() != "record not found" {
-			logs.Sugar.Errorf("Failed to find player: %v", result.Error)
-			return result.Error
-		}
+	name := p.PlayerName
 
-		if result.RowsAffected == 0 {
-			return nil
-		}
+	var stored Player
+	result := initializers.DB.Where(ucidQuery, p.UCID).First(&stored)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		logs.Sugar.Errorf("Failed to find player: %v", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return nil
+	}
+
+	*p = stored
+	if p.PlayerName == nil {
+		p.PlayerName = name
 	}
 
 	return nil
@@ -124,39 +168,59 @@ func (p *Player) UpdatePlayer(up *Player) error {
 	return nil
 }
 
-func (p *Player) CheckIfPlayerInDB() bool {
-	// Check if player is in DB
-	var playerCache PlayerCache
-	var player Player
-
-	playerCache.RefreshPlayersCache()
-	playerLookup := *playerCache.FindPlayerByName(*p.PlayerName)
-
-	if playerLookup.GetUcid() != "" {
-		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(&player)
-		if result.Error != nil && result.Error.Error() != "record not found" {
-			logs.Sugar.Errorf("Failed to find player: %v", result.Error)
-		}
-
-		if result.RowsAffected == 0 {
-			return false
+// EnsureInDB resolves the player's UCID and stores them if they are not known
+// yet. Players whose UCID cannot be resolved are skipped rather than inserted
+// with an empty UCID, which would collide on the unique index.
+func (p *Player) EnsureInDB() error {
+	if p.UCID == "" {
+		if err := p.GetPlayerUcidByName(); err != nil {
+			return err
 		}
 	}
 
-	return true
+	if p.UCID == "" {
+		logs.Sugar.Debugf("Skipping player %q: no UCID available", p.GetPlayerName())
+		return nil
+	}
 
+	var stored Player
+	result := initializers.DB.Where(ucidQuery, p.UCID).First(&stored)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		logs.Sugar.Errorf("Failed to find player: %v", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected > 0 {
+		p.PlayerID = stored.PlayerID
+		return nil
+	}
+
+	return p.CreatePlayer()
 }
 
+// GetPlayerUcidByName fills in the player's UCID from the server's current
+// player list. A player who is not in that list leaves the UCID empty; callers
+// are expected to treat that as "not resolvable right now", not as an error.
 func (p *Player) GetPlayerUcidByName() error {
-	var playercache PlayerCache
-	err := playercache.RefreshPlayersCache()
-	if err != nil {
-		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
+	name := p.GetPlayerName()
+	if name == "" {
+		return nil
 	}
 
-	player := *playercache.FindPlayerByName(p.GetPlayerName())
+	var playercache PlayerCache
+	if err := playercache.RefreshPlayersCache(); err != nil {
+		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
+		return err
+	}
 
-	p.UCID = player.Ucid
+	player := playercache.FindPlayerByName(name)
+	if player == nil {
+		logs.Sugar.Debugf("Player %q is not in the DCS player list", name)
+		return nil
+	}
+
+	p.UCID = player.GetUcid()
+
 	return nil
 }
 
@@ -191,28 +255,18 @@ func (p *Player) GetIP() string {
 	return ""
 }
 
-func (p *Player) GetPlayerUcid() string {
-	var playercache PlayerCache
-	err := playercache.RefreshPlayersCache()
-	if err != nil {
-		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
-	}
-
-	player := *playercache.FindPlayerByName(p.GetPlayerName())
-
-	return player.Ucid
-}
-
 // Find Player in cache based on Name
 func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetPlayerInfo {
 
-	if name == *AIPlayer.PlayerName {
-		player := &net.GetPlayersResponse_GetPlayerInfo{
+	// The synthetic AI players never appear in the server's player list, so
+	// resolve them locally instead of searching for them.
+	if IsAIPlayerName(name) {
+		ai := AIPlayerFor(coalitionFromAIName(name))
+		return &net.GetPlayersResponse_GetPlayerInfo{
 			Id:   0,
-			Name: *AIPlayer.PlayerName,
-			Ucid: AIPlayer.UCID,
+			Name: ai.GetPlayerName(),
+			Ucid: ai.UCID,
 		}
-		return player
 	}
 	logs.Sugar.Debugf("Finding player by name: %s", name)
 	for _, player := range p.Players {

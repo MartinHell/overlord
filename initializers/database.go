@@ -4,8 +4,11 @@ import (
 	"os"
 
 	"github.com/MartinHell/overlord/logs"
+	// glebarez/sqlite is a pure Go driver. The gorm.io/driver/sqlite one wraps
+	// mattn/go-sqlite3, which needs cgo and therefore a C toolchain — that made
+	// SQLite unusable for local development and for chart testing in CI.
+	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -15,6 +18,10 @@ func ConnectToDB() {
 	var err error
 
 	dbType := os.Getenv("DB_TYPE")
+	if dbType == "" {
+		dbType = "postgres"
+	}
+
 	dsn := os.Getenv("DB_URL")
 
 	switch dbType {
