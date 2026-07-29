@@ -390,7 +390,32 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent, missionTime float64) e
 // which is what makes accuracy and Pk computable: shots fired versus hits landed
 // versus kills achieved.
 func HitEvent(p *mission.StreamEventsResponse_HitEvent, missionTime float64) error {
+	if isCollateralHit(p) {
+		logs.Sugar.Debugf("Skipping collateral hit on %v", p.GetTarget())
+		return nil
+	}
+
 	return engagementEvent("hit", missionTime, p.GetInitiator(), p.GetWeapon(), p.WeaponName, p.GetTarget())
+}
+
+// isCollateralHit reports whether a hit is splash damage on a map object rather
+// than something worth recording.
+//
+// DCS emits a hit per scenery object caught in a blast, with neither an
+// initiator nor a weapon, so there is nothing to attribute it to: no player, no
+// coalition, no weapon to score. In a measured session these were 408 of 500
+// events, essentially all of them trees, and each one also created a units row
+// for the scenery type.
+//
+// The test is deliberately "no initiator and no weapon" rather than "target is
+// scenery": a scenery hit that DCS does attribute still tells us someone put
+// ordnance somewhere, and is kept.
+func isCollateralHit(p *mission.StreamEventsResponse_HitEvent) bool {
+	if p.GetInitiator() != nil {
+		return false
+	}
+
+	return p.GetWeapon() == nil && p.GetWeaponName() == ""
 }
 
 func KillEvent(p *mission.StreamEventsResponse_KillEvent, missionTime float64) error {
