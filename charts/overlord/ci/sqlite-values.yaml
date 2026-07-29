@@ -17,3 +17,9 @@ overlord:
   environment: production
   log_level: info
   log_encoding: json
+
+# The migration job runs in its own pod, so with SQLite it would migrate a file
+# the application never sees. Off for this smoke test, which only asserts that
+# the chart renders and the pod becomes healthy.
+migrations:
+  enabled: false

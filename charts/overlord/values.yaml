@@ -52,6 +52,22 @@ overlord:
   log_level: info
   log_encoding: json
 
+# Schema migrations run as a Helm pre-install/pre-upgrade hook, so they complete
+# before the new image starts. Not every migration is additive -- duplicate
+# weapon rows are collapsed before a unique index is added, and players.ip is
+# dropped along with its contents -- so running them alongside the application
+# would leave it querying a schema that is still changing.
+migrations:
+  enabled: true
+  # Fail the release rather than retry a broken migration indefinitely.
+  backoffLimit: 1
+  resources: {}
+
+  # SQLite caveat: the job runs in its own pod, so with db_type "sqlite" it
+  # migrates a file in its own container filesystem, not the one the application
+  # sees. For SQLite either mount a shared volume via volumes/volumeMounts, or
+  # leave this disabled and migrate by hand. Postgres has no such problem.
+
 service:
   type: ClusterIP
   port: 3000

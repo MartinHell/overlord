@@ -1,0 +1,70 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "overlord.fullname" . }}-migrate
+  labels:
+    {{- include "overlord.labels" . | nindent 4 }}
+  annotations:
+    # Run before the application on both install and upgrade. The schema changes
+    # are not all additive -- duplicate weapon rows are collapsed before a unique
+    # index is added, and the players.ip column is dropped along with its
+    # contents -- so migrating must complete before the new image starts, not
+    # alongside it.
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    # Remove the previous job before creating this one; a completed Job is
+    # immutable, so reusing the name would otherwise fail on upgrade.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  # A failed migration should fail the release rather than retry indefinitely.
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "overlord.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "overlord.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The image sets CMD with no ENTRYPOINT, so args alone would replace
+          # the entrypoint rather than be passed to it. Both are set explicitly.
+          command: ["/app/entrypoint.sh"]
+          args: ["--migrate"]
+          env:
+            {{- include "overlord.env" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
