@@ -410,6 +410,22 @@ table.grid {
   font-weight: 400;
 }
 
+.card-makers {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--ink);
+  margin: 0.6rem 0 0;
+}
+.card-prov {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  color: var(--dim);
+  margin: 0.5rem 0 0;
+  max-width: 70ch;
+}
+.card-prov a { color: var(--dim); }
+.card-prov a:hover { color: var(--amber); }
+
 .card-more { margin: 0.9rem 0 0; font-size: 0.78rem; }
 .card-more a { color: var(--amber); text-decoration: none; border-bottom: 1px solid var(--amber-dim); }
 .card-more a:hover { border-bottom-color: var(--amber); }

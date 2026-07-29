@@ -100,6 +100,9 @@ type UnitProfileView struct {
 	Blurb    string
 	// Source is a canonical article to read further, empty when none is recorded.
 	Source string
+	// Specs are the generated Wikidata facts. Fields are zero where Wikidata
+	// holds nothing, which is common.
+	Specs *Specs
 
 	// Recorded, not reference: everything below comes from the events table.
 	Sorties     int
@@ -123,6 +126,7 @@ type WeaponProfileView struct {
 	Maker    string
 	Blurb    string
 	Source   string
+	Specs    *Specs
 
 	Shots        int
 	Hits         int

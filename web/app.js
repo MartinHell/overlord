@@ -481,12 +481,14 @@ async function refreshLog() {
 
 const CARD_UNIT = `query($t: String!) { unitProfile(type: $t) {
   type curated name nickname role origin maker blurb source
+  specs { qid lengthM wingspanM heightM massKg firstFlight serviceEntry totalProduced makers }
   sorties shots hits kills losses ejections timesKilled
   stores { weaponType count }
 } }`;
 
 const CARD_WEAPON = `query($t: String!) { weaponProfile(type: $t) {
   type curated name nickname role origin maker blurb source
+  specs { qid lengthM wingspanM heightM massKg firstFlight serviceEntry totalProduced makers }
   shots hits kills hitsPerShot killsPerShot
   carriers { unitType weapons { count } }
 } }`;
@@ -513,6 +515,36 @@ function readMore(p) {
   const href = p.source || `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(p.name)}`;
   const label = p.source ? "read more" : "search for this";
   return `<p class="card-more"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label} →</a></p>`;
+}
+
+// Wikidata coverage is uneven, so only render what is actually there. A missing
+// field means nothing was recorded, which is not the same as zero.
+function specFacts(p) {
+  const s = p.specs;
+  if (!s) return "";
+
+  const rows = [];
+  const m = (v) => `${v.toFixed(2).replace(/\.00$/, "")} m`;
+
+  if (s.lengthM) rows.push(fact("length", m(s.lengthM)));
+  if (s.wingspanM) rows.push(fact("wingspan", m(s.wingspanM)));
+  if (s.heightM) rows.push(fact("height", m(s.heightM)));
+  if (s.massKg) {
+    rows.push(fact("mass", s.massKg >= 1000
+      ? `${(s.massKg / 1000).toFixed(s.massKg >= 10000 ? 0 : 1)} t`
+      : `${s.massKg.toFixed(0)} kg`));
+  }
+  if (s.firstFlight) rows.push(fact("first flight", s.firstFlight));
+  if (s.serviceEntry) rows.push(fact("in service", s.serviceEntry));
+  if (s.totalProduced) rows.push(fact("built", s.totalProduced.toLocaleString()));
+
+  const makers = (s.makers || []).join(", ");
+  if (!rows.length && !makers) return "";
+
+  return `<h4>specifications</h4>` +
+    (rows.length ? `<dl class="card-facts">${rows.join("")}</dl>` : "") +
+    (makers ? `<p class="card-makers">Built by ${esc(makers)}</p>` : "") +
+    `<p class="card-prov">From <a href="https://www.wikidata.org/wiki/${esc(s.qid)}" target="_blank" rel="noopener noreferrer">Wikidata ${esc(s.qid)}</a>, which is public domain. Fields Wikidata does not hold are omitted rather than guessed.</p>`;
 }
 
 function identityFacts(p) {
@@ -554,6 +586,7 @@ async function openCard(kind, type) {
         provenance(p) +
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
         readMore(p) +
+        specFacts(p) +
         `<h4>recorded</h4>` +
         `<dl class="card-facts">
           ${fact("sorties", p.sorties, true)}
@@ -581,6 +614,7 @@ async function openCard(kind, type) {
         provenance(p) +
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
         readMore(p) +
+        specFacts(p) +
         `<h4>recorded</h4>` +
         `<dl class="card-facts">
           ${fact("shots", p.shots, true)}

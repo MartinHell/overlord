@@ -37,7 +37,17 @@ func GraphQLHandler() {
 	})
 
 	// Static files only; see the web package for why this is not server-rendered.
-	mux.Handle("/", http.FileServer(http.FS(web.FS())))
+	//
+	// Embedded files carry a zero modification time, so http.FileServer cannot
+	// send Last-Modified and browsers fall back to heuristic caching. That
+	// silently serves a stale dashboard after an upgrade, which is indistinguishable
+	// from the code being wrong. Require revalidation instead: these files are a
+	// few kilobytes and the dashboard polls anyway.
+	dashboard := http.FileServer(http.FS(web.FS()))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		dashboard.ServeHTTP(w, r)
+	}))
 
 	// The playground moves off / now that the dashboard lives there. It stays
 	// out of production entirely: it is an unauthenticated query console.

@@ -260,3 +260,19 @@ func prettify(id string) string {
 
 	return strings.Join(strings.Fields(name), " ")
 }
+
+// UnitSpecs returns the generated Wikidata facts for a unit type. The second
+// result reports whether anything is recorded, since coverage is uneven.
+func UnitSpecs(unitType string) (Specs, bool) {
+	s, ok := unitSpecs[unitType]
+	return s, ok
+}
+
+// WeaponSpecs is the same for a store.
+//
+// Note that gun ammunition is keyed to the article for the gun, not the round,
+// so a mass here describes the weapon rather than the projectile.
+func WeaponSpecs(weaponType string) (Specs, bool) {
+	s, ok := weaponSpecs[weaponType]
+	return s, ok
+}

@@ -43,6 +43,9 @@ models:
   CoalitionKills:
     model:
       - github.com/MartinHell/overlord/models.CoalitionKills
+  Specs:
+    model:
+      - github.com/MartinHell/overlord/models.Specs
   UnitProfile:
     model:
       - github.com/MartinHell/overlord/models.UnitProfileView

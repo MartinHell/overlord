@@ -40,6 +40,24 @@ type Event {
 }
 
 """
+Physical facts from Wikidata, which is CC0. Every field is optional: coverage is
+uneven and an absent value means Wikidata holds nothing rather than zero.
+"""
+type Specs {
+    "Wikidata entity, so any value can be traced to its source."
+    qid: String!
+    lengthM: Float
+    "Wingspan as Wikidata records it. For swing-wing types this is usually unswept."
+    wingspanM: Float
+    heightM: Float
+    massKg: Float
+    firstFlight: String
+    serviceEntry: String
+    totalProduced: Int
+    makers: [String!]
+}
+
+"""
 Reference card for an airframe or vehicle: identity plus everything recorded
 about it. Identity is curated, and carries no performance figures on purpose --
 they would have to be sourced rather than recalled.
@@ -56,6 +74,7 @@ type UnitProfile {
     blurb: String
     "Canonical article to read further. Null when none is recorded."
     source: String
+    specs: Specs
 
     sorties: Int!
     shots: Int!
@@ -80,6 +99,7 @@ type WeaponProfile {
     maker: String
     blurb: String
     source: String
+    specs: Specs
 
     shots: Int!
     hits: Int!

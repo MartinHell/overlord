@@ -303,6 +303,10 @@ func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {
 		Source: models.UnitSource(unitType),
 	}
 
+	if specs, ok := models.UnitSpecs(unitType); ok {
+		view.Specs = &specs
+	}
+
 	// One pass over the events for this airframe, counted by kind.
 	var totals struct {
 		Sorties, Shots, Hits, Kills, Losses, Ejections int
@@ -380,6 +384,10 @@ func GetWeaponProfile(weaponType string) (*models.WeaponProfileView, error) {
 		Name: profile.Name, Nickname: profile.Nickname, Role: profile.Role,
 		Origin: profile.Origin, Maker: profile.Maker, Blurb: profile.Blurb,
 		Source: models.WeaponSource(weaponType),
+	}
+
+	if specs, ok := models.WeaponSpecs(weaponType); ok {
+		view.Specs = &specs
 	}
 
 	var totals models.WeaponEffectiveness
