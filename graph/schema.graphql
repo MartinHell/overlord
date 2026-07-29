@@ -3,19 +3,38 @@ scalar Time
 type Event {
     id: ID!
     player: Player
-    "One of: shot, hit, kill, crash, unit_lost, pilot_dead."
+    "shot, hit, kill, crash, dead, unit_lost, pilot_dead, ejection, takeoff, land, runway_takeoff, runway_touch, engine_startup, engine_shutdown, player_enter_unit, player_leave_unit, player_change_slot, landing_quality_mark, weapon_add, base_capture, mission_start or mission_end."
     event: String!
     "DCS mission clock in seconds when the event happened. Zero for events recorded before this was captured."
     missionTime: Float!
     "Coalition of the initiator when the event happened: red, blue, neutral or unknown."
     coalition: String
     initiator: Unit
-    "What the initiator was: unit, weapon, static, scenery, airbase or unknown."
+    "What the initiator was: unit, weapon, static, scenery, airbase, cargo or unknown."
     initiatorKind: String
+    "Identity of the specific unit, as opposed to its type."
+    initiatorName: String
+    initiatorGroup: String
+    initiatorCallsign: String
+    "Where the initiator was when the event fired."
+    initiatorLat: Float
+    initiatorLon: Float
+    initiatorAlt: Float
     target: Target
     "Coalition of the target. Equal to coalition means a teamkill."
     targetCoalition: String
+    targetName: String
+    "Where the target was. With the initiator position this gives engagement geometry."
+    targetLat: Float
+    targetLon: Float
+    targetAlt: Float
     weapon: Weapon
+    "Airbase involved in takeoff, landing, engine and base capture events."
+    place: String
+    "Landing grade, on landingQualityMark events."
+    comment: String
+    "Slot identifier, on playerChangeSlot events."
+    slotID: String
     createdAt: Time!
     updatedAt: Time!
 }
@@ -33,7 +52,6 @@ type Player {
     deletedAt: Time
     playerName: String
     ucid: String!
-    ip: String
 }
 
 type Unit {

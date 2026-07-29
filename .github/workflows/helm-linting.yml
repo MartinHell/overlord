@@ -36,12 +36,22 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
         run: ct lint --target-branch ${{ github.event.repository.default_branch }}
 
-# Disable kind deploy until we've added a way to install postgres as part of this test or have enabled 
-# sqlite as a test database in the app code.
+# ct install is still disabled, but the reason has changed. SQLite now works in
+# the container (the driver is pure Go), and charts/overlord/ci/sqlite-values.yaml
+# configures it. The remaining blocker is that the chart deploys
+# ghcr.io/martinhell/overlord:{{ .Chart.AppVersion }}, currently v0.0.1, which is
+# the image published from main. ct install therefore tests the last released
+# image rather than the branch under review, and v0.0.1 predates the pure-Go
+# SQLite driver, so it cannot start from those values.
+#
+# To enable: either publish an image containing the pure-Go driver and point
+# appVersion at it, or have this workflow build the branch image and load it into
+# kind with `kind load docker-image` plus an image.tag override.
+#
 #      - name: Create kind cluster
 #        if: steps.list-changed.outputs.changed == 'true'
 #        uses: helm/kind-action@v1.10.0
-
+#
 #      - name: Run chart-testing (install)
 #        if: steps.list-changed.outputs.changed == 'true'
 #        run: ct install --target-branch ${{ github.event.repository.default_branch }}

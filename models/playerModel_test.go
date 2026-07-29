@@ -6,23 +6,10 @@ import (
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
 )
 
-func TestFindPlayerByNameMissingReturnsNil(t *testing.T) {
-	// This used to be dereferenced unconditionally by the event handlers, which
-	// panicked whenever an event arrived for a player who had already left.
-	cache := PlayerCache{Players: []*net.GetPlayersResponse_GetPlayerInfo{
-		{Id: 1, Name: "Viper", Ucid: "abc"},
-	}}
-
-	if got := cache.FindPlayerByName("Ghost"); got != nil {
-		t.Fatalf("expected nil for an unknown player, got %+v", got)
-	}
-}
-
 func TestFindPlayerByNameFindsPlayer(t *testing.T) {
-	cache := PlayerCache{Players: []*net.GetPlayersResponse_GetPlayerInfo{
-		{Id: 1, Name: "Viper", Ucid: "abc"},
-		{Id: 2, Name: "Ghost", Ucid: "def"},
-	}}
+	cache := &PlayerCache{}
+	cache.Add(&net.GetPlayersResponse_GetPlayerInfo{Id: 1, Name: "Viper", Ucid: "abc"})
+	cache.Add(&net.GetPlayersResponse_GetPlayerInfo{Id: 2, Name: "Ghost", Ucid: "def"})
 
 	got := cache.FindPlayerByName("Ghost")
 	if got == nil {

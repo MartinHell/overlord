@@ -15,7 +15,9 @@ type Weapon struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt `gorm:"index"`
-	Type      string
+	// Unique so that ensureWeapon's FirstOrCreate cannot race two rows into
+	// existence for the same weapon and split its shot and hit counts.
+	Type string `gorm:"not null;unique;index"`
 }
 
 func (w *Weapon) FromCommonWeapon(r *common.Weapon) {

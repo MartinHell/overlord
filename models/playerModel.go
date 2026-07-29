@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"time"
@@ -13,10 +12,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type PlayerCache struct {
-	Players []*net.GetPlayersResponse_GetPlayerInfo
-}
-
 type Player struct {
 	PlayerID   uint `gorm:"unique;primaryKey"`
 	CreatedAt  time.Time
@@ -25,7 +20,6 @@ type Player struct {
 	PlayerName *string
 	//Unit       `gorm:"foreignKey:UnitID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	UCID string `gorm:"unique;not null"`
-	IP   string
 	//Id   uint32
 	//UnitID     uint
 }
@@ -148,14 +142,6 @@ func (p *Player) UpdatePlayer(up *Player) error {
 		p.UCID = up.UCID
 		hasChanges = true
 	}
-	if up.IP != "" {
-		p.IP = up.IP
-		hasChanges = true
-	} /*
-		if up.Id != 0 {
-			p.Id = up.Id
-			hasChanges = true
-		} */
 
 	if hasChanges {
 		result := initializers.DB.Model(&p).Where(ucidQuery, p.UCID).Updates(p)
@@ -207,13 +193,7 @@ func (p *Player) GetPlayerUcidByName() error {
 		return nil
 	}
 
-	var playercache PlayerCache
-	if err := playercache.RefreshPlayersCache(); err != nil {
-		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
-		return err
-	}
-
-	player := playercache.FindPlayerByName(name)
+	player := Players.FindPlayerByName(name)
 	if player == nil {
 		logs.Sugar.Debugf("Player %q is not in the DCS player list", name)
 		return nil
@@ -246,61 +226,6 @@ func (p *Player) GetUCID() string {
 		return p.UCID
 	}
 	return ""
-}
-
-func (p *Player) GetIP() string {
-	if p != nil {
-		return p.IP
-	}
-	return ""
-}
-
-// Find Player in cache based on Name
-func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetPlayerInfo {
-
-	// The synthetic AI players never appear in the server's player list, so
-	// resolve them locally instead of searching for them.
-	if IsAIPlayerName(name) {
-		ai := AIPlayerFor(coalitionFromAIName(name))
-		return &net.GetPlayersResponse_GetPlayerInfo{
-			Id:   0,
-			Name: ai.GetPlayerName(),
-			Ucid: ai.UCID,
-		}
-	}
-	logs.Sugar.Debugf("Finding player by name: %s", name)
-	for _, player := range p.Players {
-		if player.Name == name {
-			return player
-		}
-	}
-	return nil
-}
-
-// Find Player in cache based on UCID
-func (p *PlayerCache) FindPlayerByUCID(ucid string) *net.GetPlayersResponse_GetPlayerInfo {
-
-	logs.Sugar.Debugf("Finding player by UCID: %s", ucid)
-	for _, player := range p.Players {
-		if player.Ucid == ucid {
-			return player
-		}
-	}
-	return nil
-}
-
-// This is a cache of players that we can use to avoid querying the database
-func (p *PlayerCache) RefreshPlayersCache() error {
-
-	logs.Sugar.Debug("Refreshing player cache")
-	response, err := initializers.NetServiceClient.GetPlayers(context.Background(), &net.GetPlayersRequest{})
-	if err != nil {
-		return err
-	}
-
-	logs.Sugar.Debugf("%+v", response)
-	p.Players = response.Players
-	return nil
 }
 
 func ensurePlayer(tx *gorm.DB, player Player) (*uint, error) {

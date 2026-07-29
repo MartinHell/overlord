@@ -50,52 +50,32 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		filterCoalition = *coalition
 	}
 
-	events := controllers.GetEventsFiltered(filterType, filterCoalition)
-
-	if len(events) == 0 {
-		return &models.EventConnection{
-			PageInfo: &models.PageInfo{},
-			Edges:    []*models.EventEdge{},
-		}, nil
-	}
-
-	start := 0
-	if after != nil {
-		for i, event := range events {
-			if fmt.Sprintf("%d", event.ID) == *after {
-				start = i
-				break
-			}
-		}
-	}
-
-	// first is optional in the schema, so fall back to a page size instead of
-	// dereferencing a nil pointer.
-	pageSize := defaultPageSize
-	if first != nil && *first > 0 {
+	pageSize := 0
+	if first != nil {
 		pageSize = *first
 	}
 
-	// Get the slice of events
-	end := start + pageSize
-	if end > len(events) {
-		end = len(events)
+	cursor := ""
+	if after != nil {
+		cursor = *after
 	}
-	slicedEvents := events[start:end]
 
-	// Create EventEdges
-	var edges []*models.EventEdge
-	for _, event := range slicedEvents {
+	page, err := controllers.GetEventsPage(filterType, filterCoalition, pageSize, cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	edges := make([]*models.EventEdge, 0, len(page.Events))
+	for _, event := range page.Events {
 		edges = append(edges, &models.EventEdge{
 			Node:   event,
 			Cursor: fmt.Sprintf("%d", event.ID),
 		})
 	}
 
-	// Create PageInfo
-	pageInfo := &models.PageInfo{
-		EndCursor:   fmt.Sprintf("%d", events[end-1].ID),
-		HasNextPage: end < len(events),
+	pageInfo := &models.PageInfo{HasNextPage: page.HasNextPage}
+	if len(edges) > 0 {
+		pageInfo.EndCursor = edges[len(edges)-1].Cursor
 	}
 
 	return &models.EventConnection{
@@ -106,7 +86,7 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 
 // KillsByCoalition returns the kill tally for every coalition at once.
 func (r *queryResolver) KillsByCoalition(ctx context.Context) ([]*models.CoalitionKills, error) {
-	return controllers.GetKillsByCoalition(), nil
+	return controllers.GetKillsByCoalition()
 }
 
 // Event is the resolver for the event field.
@@ -116,32 +96,32 @@ func (r *queryResolver) Event(ctx context.Context, id string) (*models.Event, er
 
 // Players is the resolver for the players field.
 func (r *queryResolver) Players(ctx context.Context) ([]*models.Player, error) {
-	return []*models.Player{}, nil
+	return controllers.GetPlayers()
 }
 
 // Player is the resolver for the player field.
 func (r *queryResolver) Player(ctx context.Context, id string) (*models.Player, error) {
-	return &models.Player{}, nil
+	return controllers.GetPlayerByID(id)
 }
 
 // Units is the resolver for the units field.
 func (r *queryResolver) Units(ctx context.Context) ([]*models.Unit, error) {
-	return []*models.Unit{}, nil
+	return controllers.GetUnits()
 }
 
 // Unit is the resolver for the unit field.
 func (r *queryResolver) Unit(ctx context.Context, id string) (*models.Unit, error) {
-	return &models.Unit{}, nil
+	return controllers.GetUnitByID(id)
 }
 
 // Weapons is the resolver for the weapons field.
 func (r *queryResolver) Weapons(ctx context.Context) ([]*models.Weapon, error) {
-	return []*models.Weapon{}, nil
+	return controllers.GetWeapons()
 }
 
 // Weapon is the resolver for the weapon field.
 func (r *queryResolver) Weapon(ctx context.Context, id string) (*models.Weapon, error) {
-	return &models.Weapon{}, nil
+	return controllers.GetWeaponByID(id)
 }
 
 // Healthcheck is the resolver for the healthcheck field.
@@ -151,20 +131,12 @@ func (r *queryResolver) Healthcheck(ctx context.Context) (string, error) {
 
 // ShotsBreakdown returns a breakdown of shots by unit and weapon type
 func (r *queryResolver) ShotsBreakdown(ctx context.Context) ([]*models.UnitWeaponBreakdown, error) {
-	events := controllers.GetEventsByType("shot")
-	breakdown := generateBreakdownUnits(events)
-
-	return generateUnitWeaponBreakdown(breakdown), nil
+	return controllers.GetShotsBreakdown()
 }
 
 // ShotsByPlayers returns a breakdown of shots by all players
 func (r *queryResolver) ShotsByPlayers(ctx context.Context) ([]*models.PlayerShotBreakdown, error) {
-	events := controllers.GetEventsByType("shot")
-	if events == nil {
-		return nil, nil // or handle the nil events case as needed
-	}
-
-	return GeneratePlayerShotBreakdowns(events)
+	return controllers.GetShotsByPlayers()
 }
 
 // ShotsByPlayer returns a breakdown of shots by a specific player
@@ -173,27 +145,11 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, playerID string) (*mo
 	// signature; keep the parsed value under a different name.
 	var id uint
 	if playerID != "" {
-		tmpID, _ := strconv.ParseUint(playerID, 10, 64)
-		id = uint(tmpID)
+		parsed, _ := strconv.ParseUint(playerID, 10, 64)
+		id = uint(parsed)
 	}
 
-	events := controllers.GetEventsByTypeAndPlayer("shot", id)
-	if events == nil {
-		return nil, nil // or handle the nil events case as needed
-	}
-
-	var result []*models.PlayerShotBreakdown
-
-	result, err := GeneratePlayerShotBreakdowns(events)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result) == 0 {
-		return nil, nil
-	}
-
-	return result[0], nil
+	return controllers.GetShotsByPlayer(id)
 }
 
 // TargetID is the resolver for the targetID field.

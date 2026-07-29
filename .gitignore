@@ -47,16 +47,17 @@ go.work
 .env
 
 # Ignore built binary
-./overlord
-./overlord-migrate
 .aider*
 # Local databases
 *.db
 *.db-wal
 *.db-shm
-sqlite.db
-overlord
-overlord-migrate
+
+# Built binaries. Anchored with a leading slash: a bare "overlord" matches any
+# path component with that name, which silently ignored everything new under
+# charts/overlord/.
+/overlord
+/overlord-migrate
 
 # Ignore generated code
 graph/generated

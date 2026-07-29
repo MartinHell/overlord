@@ -13,7 +13,7 @@ func TestBuildTargetUnit(t *testing.T) {
 		Coalition: common.Coalition_COALITION_RED,
 	}}}
 
-	target, coalition := buildTarget(protoTarget)
+	target, coalition, _ := buildTarget(protoTarget)
 
 	if target.Kind != models.ObjectKindUnit {
 		t.Errorf("expected kind %q, got %q", models.ObjectKindUnit, target.Kind)
@@ -33,7 +33,7 @@ func TestBuildTargetWeapon(t *testing.T) {
 		Type: "AIM_120C",
 	}}}
 
-	target, _ := buildTarget(protoTarget)
+	target, _, _ := buildTarget(protoTarget)
 
 	if target.Kind != models.ObjectKindWeapon {
 		t.Errorf("expected kind %q, got %q", models.ObjectKindWeapon, target.Kind)
@@ -53,7 +53,7 @@ func TestBuildTargetStatic(t *testing.T) {
 		Coalition: common.Coalition_COALITION_BLUE,
 	}}}
 
-	target, coalition := buildTarget(protoTarget)
+	target, coalition, _ := buildTarget(protoTarget)
 
 	if target.Kind != models.ObjectKindStatic {
 		t.Errorf("expected kind %q, got %q", models.ObjectKindStatic, target.Kind)
@@ -71,7 +71,7 @@ func TestBuildTargetScenery(t *testing.T) {
 		Type: "Bridge",
 	}}}
 
-	target, coalition := buildTarget(protoTarget)
+	target, coalition, _ := buildTarget(protoTarget)
 
 	if target.Kind != models.ObjectKindScenery {
 		t.Errorf("expected kind %q, got %q", models.ObjectKindScenery, target.Kind)
@@ -86,7 +86,7 @@ func TestBuildTargetScenery(t *testing.T) {
 }
 
 func TestBuildTargetNil(t *testing.T) {
-	target, coalition := buildTarget(nil)
+	target, coalition, _ := buildTarget(nil)
 
 	if target.Kind != models.ObjectKindUnknown {
 		t.Errorf("expected kind %q, got %q", models.ObjectKindUnknown, target.Kind)
