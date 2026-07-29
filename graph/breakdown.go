@@ -11,9 +11,6 @@ import (
 	"github.com/MartinHell/overlord/models"
 )
 
-// defaultPageSize is used when a query omits the optional `first` argument.
-const defaultPageSize = 50
-
 func convertStringToUint(s string) uint {
 	value, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {

@@ -50,52 +50,32 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		filterCoalition = *coalition
 	}
 
-	events := controllers.GetEventsFiltered(filterType, filterCoalition)
-
-	if len(events) == 0 {
-		return &models.EventConnection{
-			PageInfo: &models.PageInfo{},
-			Edges:    []*models.EventEdge{},
-		}, nil
-	}
-
-	start := 0
-	if after != nil {
-		for i, event := range events {
-			if fmt.Sprintf("%d", event.ID) == *after {
-				start = i
-				break
-			}
-		}
-	}
-
-	// first is optional in the schema, so fall back to a page size instead of
-	// dereferencing a nil pointer.
-	pageSize := defaultPageSize
-	if first != nil && *first > 0 {
+	pageSize := 0
+	if first != nil {
 		pageSize = *first
 	}
 
-	// Get the slice of events
-	end := start + pageSize
-	if end > len(events) {
-		end = len(events)
+	cursor := ""
+	if after != nil {
+		cursor = *after
 	}
-	slicedEvents := events[start:end]
 
-	// Create EventEdges
-	var edges []*models.EventEdge
-	for _, event := range slicedEvents {
+	page, err := controllers.GetEventsPage(filterType, filterCoalition, pageSize, cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	edges := make([]*models.EventEdge, 0, len(page.Events))
+	for _, event := range page.Events {
 		edges = append(edges, &models.EventEdge{
 			Node:   event,
 			Cursor: fmt.Sprintf("%d", event.ID),
 		})
 	}
 
-	// Create PageInfo
-	pageInfo := &models.PageInfo{
-		EndCursor:   fmt.Sprintf("%d", events[end-1].ID),
-		HasNextPage: end < len(events),
+	pageInfo := &models.PageInfo{HasNextPage: page.HasNextPage}
+	if len(edges) > 0 {
+		pageInfo.EndCursor = edges[len(edges)-1].Cursor
 	}
 
 	return &models.EventConnection{
@@ -116,32 +96,32 @@ func (r *queryResolver) Event(ctx context.Context, id string) (*models.Event, er
 
 // Players is the resolver for the players field.
 func (r *queryResolver) Players(ctx context.Context) ([]*models.Player, error) {
-	return []*models.Player{}, nil
+	return controllers.GetPlayers()
 }
 
 // Player is the resolver for the player field.
 func (r *queryResolver) Player(ctx context.Context, id string) (*models.Player, error) {
-	return &models.Player{}, nil
+	return controllers.GetPlayerByID(id)
 }
 
 // Units is the resolver for the units field.
 func (r *queryResolver) Units(ctx context.Context) ([]*models.Unit, error) {
-	return []*models.Unit{}, nil
+	return controllers.GetUnits()
 }
 
 // Unit is the resolver for the unit field.
 func (r *queryResolver) Unit(ctx context.Context, id string) (*models.Unit, error) {
-	return &models.Unit{}, nil
+	return controllers.GetUnitByID(id)
 }
 
 // Weapons is the resolver for the weapons field.
 func (r *queryResolver) Weapons(ctx context.Context) ([]*models.Weapon, error) {
-	return []*models.Weapon{}, nil
+	return controllers.GetWeapons()
 }
 
 // Weapon is the resolver for the weapon field.
 func (r *queryResolver) Weapon(ctx context.Context, id string) (*models.Weapon, error) {
-	return &models.Weapon{}, nil
+	return controllers.GetWeaponByID(id)
 }
 
 // Healthcheck is the resolver for the healthcheck field.

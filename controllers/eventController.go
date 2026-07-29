@@ -30,6 +30,14 @@ func GetEvents() []*models.Event {
 	return events
 }
 
+const (
+	// defaultPageSize applies when a query omits the optional first argument.
+	defaultPageSize = 50
+	// maxPageSize caps what a single query can pull back, so a client cannot
+	// ask for the whole table in one request.
+	maxPageSize = 500
+)
+
 func GetEventsByType(eventType string) []*models.Event {
 	var events []*models.Event
 
@@ -38,13 +46,30 @@ func GetEventsByType(eventType string) []*models.Event {
 	return events
 }
 
-// GetEventsFiltered returns events optionally narrowed by type and by the
+// EventPage is one page of events plus what the caller needs to ask for the
+// next one.
+type EventPage struct {
+	Events      []*models.Event
+	HasNextPage bool
+}
+
+// GetEventsPage returns newest-first events, narrowed by type and by the
 // initiator's coalition. An empty value for either means "no filter", which is
 // how a caller asks for both sides at once.
-func GetEventsFiltered(eventType, coalition string) []*models.Event {
-	var events []*models.Event
+//
+// Paging is keyset rather than offset: `after` is an event ID, and because the
+// ordering is a descending primary key, the next page is simply everything with
+// a smaller ID. That stays correct while new events are being written, which an
+// OFFSET would not, and it never loads more than one page into memory.
+func GetEventsPage(eventType, coalition string, first int, after string) (EventPage, error) {
+	if first <= 0 {
+		first = defaultPageSize
+	}
+	if first > maxPageSize {
+		first = maxPageSize
+	}
 
-	query := initializers.ApplyPreloads(initializers.DB)
+	query := initializers.ApplyPreloads(initializers.DB).Model(&models.Event{})
 
 	if eventType != "" {
 		query = query.Where("event = ?", eventType)
@@ -52,10 +77,26 @@ func GetEventsFiltered(eventType, coalition string) []*models.Event {
 	if coalition != "" {
 		query = query.Where("coalition = ?", coalition)
 	}
+	if after != "" {
+		query = query.Where("id < ?", after)
+	}
 
-	query.Find(&events)
+	var events []*models.Event
 
-	return events
+	// Fetch one extra row to find out whether another page exists, without a
+	// second COUNT query over the whole table.
+	if err := query.Order("id DESC").Limit(first + 1).Find(&events).Error; err != nil {
+		logs.Sugar.Errorf("Failed to query events: %v", err)
+		return EventPage{}, err
+	}
+
+	page := EventPage{Events: events}
+	if len(events) > first {
+		page.Events = events[:first]
+		page.HasNextPage = true
+	}
+
+	return page, nil
 }
 
 // GetKillsByCoalition tallies kill events per initiating coalition, covering
