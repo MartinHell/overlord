@@ -17,6 +17,7 @@ const (
 	ObjectKindStatic  = "static"
 	ObjectKindScenery = "scenery"
 	ObjectKindAirbase = "airbase"
+	ObjectKindCargo   = "cargo"
 	ObjectKindUnknown = "unknown"
 )
 

@@ -189,6 +189,10 @@ func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error
 		logs.Sugar.Debugf("UnitLost event: %v", inner.UnitLost)
 		return initiatorEvent("unit_lost", missionTime, inner.UnitLost.GetInitiator())
 
+	case *mission.StreamEventsResponse_Disconnect:
+		logs.Sugar.Debugf("Disconnect event: %v", inner.Disconnect)
+		return DisconnectEvent(inner.Disconnect)
+
 	case *mission.StreamEventsResponse_PilotDead:
 		logs.Sugar.Debugf("PilotDead event: %v", inner.PilotDead)
 		return initiatorEvent("pilot_dead", missionTime, inner.PilotDead.GetInitiator())
@@ -266,6 +270,11 @@ func runEventStream(ctx context.Context, eventHandler EventHandler) error {
 	if err != nil {
 		return err
 	}
+
+	// Player ids are only meaningful within one connection to DCS, so anything
+	// tracked from a previous stream is stale.
+	resetSessions()
+	models.Players.Invalidate()
 
 	logs.Sugar.Infoln("Events stream opened")
 
@@ -357,19 +366,17 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent, missionTime float64) e
 	var weapon models.Weapon
 	weapon.Type = p.GetWeapon().GetType()
 
-	u := p.Initiator.GetUnit()
-
-	connectedPlayer := resolvePlayer(u)
-
-	initiator := models.Unit{}
-	initiator.FromCommonUnit(u)
+	// Shots come from statics as well as units: a SAM launcher is a static, and
+	// resolving only the unit case dropped its initiator entirely.
+	from := buildInitiator(p.GetInitiator())
 
 	event := models.Event{
-		MissionTime: missionTime,
-		Coalition:   models.CoalitionFromUnit(u),
+		MissionTime:   missionTime,
+		Coalition:     from.Coalition,
+		InitiatorKind: from.Kind,
 	}
 
-	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil)
+	event.FromStreamEventsResponse("shot", &from.Player, &from.Unit, &weapon, nil)
 
 	if err := event.CreateEvent(); err != nil {
 		logs.Sugar.Errorf("Failed to store shot event: %v", err)
@@ -487,6 +494,17 @@ func buildInitiator(initiator *common.Initiator) initiatorInfo {
 		info.Coalition = models.CoalitionFromProto(airbase.GetCoalition())
 		info.Unit.Type = airbase.GetName()
 		info.Player = models.AIPlayerFor(info.Coalition)
+
+	case initiator.GetCargo() != nil:
+		// Cargo carries no identifying fields, so only the kind is recordable.
+		info.Kind = models.ObjectKindCargo
+		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
+
+	case initiator.GetUnknown() != nil:
+		// DCS could not classify the object but still names it, which beats
+		// discarding it.
+		info.Unit.Type = initiator.GetUnknown().GetName()
+		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
 
 	default:
 		logs.Sugar.Debugf("Unrecognised initiator type: %v", initiator)
@@ -607,35 +625,6 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 
 		logs.Sugar.Debugf("Unit updated: %v", unit.Type)
 	}
-
-	return nil
-}
-
-// ConnectEvent handles the connect event
-func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
-	var connectedPlayer models.Player
-
-	connectedPlayer.FromStreamEventsResponse_ConnectEvent(p)
-
-	// The connect event carries the UCID directly, so the player can be stored
-	// without consulting the server's player list.
-	if err := connectedPlayer.EnsureInDB(); err != nil {
-		logs.Sugar.Errorf(logCreatePlayer, err)
-		return err
-	}
-
-	// Reconnecting under a new name is common, so refresh the stored details.
-	updatedPlayer := models.Player{
-		UCID:       p.GetUcid(),
-		PlayerName: &p.Name,
-	}
-
-	if err := connectedPlayer.UpdatePlayer(&updatedPlayer); err != nil {
-		logs.Sugar.Errorf("Failed to update player: %v", err)
-		return err
-	}
-
-	logs.Sugar.Debugf("Player connected: %v", connectedPlayer.GetPlayerName())
 
 	return nil
 }

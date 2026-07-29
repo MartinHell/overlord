@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"time"
@@ -12,10 +11,6 @@ import (
 	"github.com/MartinHell/overlord/logs"
 	"gorm.io/gorm"
 )
-
-type PlayerCache struct {
-	Players []*net.GetPlayersResponse_GetPlayerInfo
-}
 
 type Player struct {
 	PlayerID   uint `gorm:"unique;primaryKey"`
@@ -207,13 +202,7 @@ func (p *Player) GetPlayerUcidByName() error {
 		return nil
 	}
 
-	var playercache PlayerCache
-	if err := playercache.RefreshPlayersCache(); err != nil {
-		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
-		return err
-	}
-
-	player := playercache.FindPlayerByName(name)
+	player := Players.FindPlayerByName(name)
 	if player == nil {
 		logs.Sugar.Debugf("Player %q is not in the DCS player list", name)
 		return nil
@@ -253,54 +242,6 @@ func (p *Player) GetIP() string {
 		return p.IP
 	}
 	return ""
-}
-
-// Find Player in cache based on Name
-func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetPlayerInfo {
-
-	// The synthetic AI players never appear in the server's player list, so
-	// resolve them locally instead of searching for them.
-	if IsAIPlayerName(name) {
-		ai := AIPlayerFor(coalitionFromAIName(name))
-		return &net.GetPlayersResponse_GetPlayerInfo{
-			Id:   0,
-			Name: ai.GetPlayerName(),
-			Ucid: ai.UCID,
-		}
-	}
-	logs.Sugar.Debugf("Finding player by name: %s", name)
-	for _, player := range p.Players {
-		if player.Name == name {
-			return player
-		}
-	}
-	return nil
-}
-
-// Find Player in cache based on UCID
-func (p *PlayerCache) FindPlayerByUCID(ucid string) *net.GetPlayersResponse_GetPlayerInfo {
-
-	logs.Sugar.Debugf("Finding player by UCID: %s", ucid)
-	for _, player := range p.Players {
-		if player.Ucid == ucid {
-			return player
-		}
-	}
-	return nil
-}
-
-// This is a cache of players that we can use to avoid querying the database
-func (p *PlayerCache) RefreshPlayersCache() error {
-
-	logs.Sugar.Debug("Refreshing player cache")
-	response, err := initializers.NetServiceClient.GetPlayers(context.Background(), &net.GetPlayersRequest{})
-	if err != nil {
-		return err
-	}
-
-	logs.Sugar.Debugf("%+v", response)
-	p.Players = response.Players
-	return nil
 }
 
 func ensurePlayer(tx *gorm.DB, player Player) (*uint, error) {
