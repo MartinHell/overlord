@@ -30,6 +30,10 @@ type Event struct {
 	Coalition       string `gorm:"index"`
 	InitiatorUnitID *uint
 	Initiator       Unit `gorm:"foreignKey:InitiatorUnitID;references:UnitID"`
+	// InitiatorKind mirrors Target.Kind: an initiator can be a static, a weapon
+	// or scenery, not just a unit, and its type is stored in Initiator either
+	// way.
+	InitiatorKind string `gorm:"index"`
 	TargetID        *uint
 	Target          Target `gorm:"foreignKey:TargetID;references:TargetID"`
 	// TargetCoalition is stored on the event rather than on Target because
@@ -109,6 +113,7 @@ func (e *Event) CreateEvent() error {
 			Event:           e.Event,
 			MissionTime:     e.MissionTime,
 			Coalition:       e.Coalition,
+			InitiatorKind:   e.InitiatorKind,
 			InitiatorUnitID: e.InitiatorUnitID,
 			TargetID:        e.TargetID,
 			TargetCoalition: e.TargetCoalition,

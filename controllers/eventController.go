@@ -289,23 +289,20 @@ func resolvePlayer(u *common.Unit) models.Player {
 // initiatorEvent stores an event that only identifies the unit it happened to:
 // crash, unit_lost and pilot_dead all have this shape.
 func initiatorEvent(eventType string, missionTime float64, initiator *common.Initiator) error {
-	u := initiator.GetUnit()
-	if u == nil {
-		logs.Sugar.Debugf("Skipping %s event without a unit initiator", eventType)
+	from := buildInitiator(initiator)
+
+	if from.Unit.Type == "" {
+		logs.Sugar.Debugf("Skipping %s event: initiator could not be identified", eventType)
 		return nil
 	}
 
-	connectedPlayer := resolvePlayer(u)
-
-	unit := models.Unit{}
-	unit.FromCommonUnit(u)
-
 	event := models.Event{
-		MissionTime: missionTime,
-		Coalition:   models.CoalitionFromUnit(u),
+		MissionTime:   missionTime,
+		Coalition:     from.Coalition,
+		InitiatorKind: from.Kind,
 	}
 
-	event.FromStreamEventsResponse(eventType, &connectedPlayer, &unit, nil, nil)
+	event.FromStreamEventsResponse(eventType, &from.Player, &from.Unit, nil, nil)
 
 	if err := event.CreateEvent(); err != nil {
 		logs.Sugar.Errorf("Failed to store %s event: %v", eventType, err)
@@ -371,28 +368,18 @@ func engagementEvent(
 		weapon.Type = *weaponName
 	}
 
-	var connectedPlayer models.Player
-	initiatorUnit := models.Unit{}
-	coalition := models.CoalitionUnknown
-
-	if initiator != nil {
-		u := initiator.GetUnit()
-
-		connectedPlayer = resolvePlayer(u)
-		coalition = models.CoalitionFromUnit(u)
-
-		initiatorUnit.FromCommonUnit(u)
-	}
+	from := buildInitiator(initiator)
 
 	target, targetCoalition := buildTarget(protoTarget)
 
 	event := models.Event{
 		MissionTime:     missionTime,
-		Coalition:       coalition,
+		Coalition:       from.Coalition,
+		InitiatorKind:   from.Kind,
 		TargetCoalition: targetCoalition,
 	}
 
-	event.FromStreamEventsResponse(eventType, &connectedPlayer, &initiatorUnit, &weapon, &target)
+	event.FromStreamEventsResponse(eventType, &from.Player, &from.Unit, &weapon, &target)
 
 	if err := event.CreateEvent(); err != nil {
 		logs.Sugar.Errorf("Failed to store %s event: %v", eventType, err)
@@ -402,11 +389,77 @@ func engagementEvent(
 	return nil
 }
 
+// initiatorInfo describes whatever caused an event. DCS models an initiator
+// with the same oneof as a target, so it can be a static SAM site, a weapon or
+// scenery, not just a unit.
+type initiatorInfo struct {
+	Unit      models.Unit
+	Kind      string
+	Coalition string
+	Player    models.Player
+}
+
+// buildInitiator resolves an initiator of any kind. Only the unit case used to
+// be handled, so an event started by anything else was stored with an empty
+// initiator and attributed to the AI player by accident.
+func buildInitiator(initiator *common.Initiator) initiatorInfo {
+	info := initiatorInfo{
+		Kind:      models.ObjectKindUnknown,
+		Coalition: models.CoalitionUnknown,
+	}
+
+	if initiator == nil {
+		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
+		return info
+	}
+
+	switch {
+	case initiator.GetUnit() != nil:
+		u := initiator.GetUnit()
+		info.Kind = models.ObjectKindUnit
+		info.Coalition = models.CoalitionFromUnit(u)
+		info.Player = resolvePlayer(u)
+		info.Unit.FromCommonUnit(u)
+
+	case initiator.GetStatic() != nil:
+		static := initiator.GetStatic()
+		info.Kind = models.ObjectKindStatic
+		info.Coalition = models.CoalitionFromProto(static.GetCoalition())
+		info.Unit.Type = static.GetType()
+		info.Player = models.AIPlayerFor(info.Coalition)
+
+	case initiator.GetWeapon() != nil:
+		// A weapon can cause a hit in its own right, for example a bomb
+		// detonating after its launcher has already been destroyed.
+		info.Kind = models.ObjectKindWeapon
+		info.Unit.Type = initiator.GetWeapon().GetType()
+		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
+
+	case initiator.GetScenery() != nil:
+		info.Kind = models.ObjectKindScenery
+		info.Unit.Type = initiator.GetScenery().GetType()
+		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
+
+	case initiator.GetAirbase() != nil:
+		airbase := initiator.GetAirbase()
+		info.Kind = models.ObjectKindAirbase
+		info.Coalition = models.CoalitionFromProto(airbase.GetCoalition())
+		info.Unit.Type = airbase.GetName()
+		info.Player = models.AIPlayerFor(info.Coalition)
+
+	default:
+		logs.Sugar.Debugf("Unrecognised initiator type: %v", initiator)
+		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
+	}
+
+	return info
+}
+
 // buildTarget converts whatever a target turned out to be into a Target row.
 // Every branch records something: previously anything that was not a unit was
 // discarded, which lost the target on the great majority of air-to-ground kills.
 func buildTarget(protoTarget *common.Target) (models.Target, string) {
-	target := models.Target{Kind: models.TargetKindUnknown}
+	target := models.Target{Kind: models.ObjectKindUnknown}
 	coalition := models.CoalitionUnknown
 
 	if protoTarget == nil {
@@ -416,7 +469,7 @@ func buildTarget(protoTarget *common.Target) (models.Target, string) {
 	switch {
 	case protoTarget.GetUnit() != nil:
 		tgt := protoTarget.GetUnit()
-		target.Kind = models.TargetKindUnit
+		target.Kind = models.ObjectKindUnit
 		coalition = models.CoalitionFromUnit(tgt)
 
 		if tgt.GetPlayerName() != "" {
@@ -430,23 +483,23 @@ func buildTarget(protoTarget *common.Target) (models.Target, string) {
 
 	case protoTarget.GetWeapon() != nil:
 		// Shooting down a missile, for example.
-		target.Kind = models.TargetKindWeapon
+		target.Kind = models.ObjectKindWeapon
 		target.Weapon.FromCommonWeapon(protoTarget.GetWeapon())
 
 	case protoTarget.GetStatic() != nil:
 		static := protoTarget.GetStatic()
-		target.Kind = models.TargetKindStatic
+		target.Kind = models.ObjectKindStatic
 		target.Unit.Type = static.GetType()
 		coalition = models.CoalitionFromProto(static.GetCoalition())
 
 	case protoTarget.GetScenery() != nil:
 		// Map objects: buildings, bridges. They belong to no coalition.
-		target.Kind = models.TargetKindScenery
+		target.Kind = models.ObjectKindScenery
 		target.Unit.Type = protoTarget.GetScenery().GetType()
 
 	case protoTarget.GetAirbase() != nil:
 		airbase := protoTarget.GetAirbase()
-		target.Kind = models.TargetKindAirbase
+		target.Kind = models.ObjectKindAirbase
 		target.Unit.Type = airbase.GetName()
 		coalition = models.CoalitionFromProto(airbase.GetCoalition())
 

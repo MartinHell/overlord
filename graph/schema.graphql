@@ -10,6 +10,8 @@ type Event {
     "Coalition of the initiator when the event happened: red, blue, neutral or unknown."
     coalition: String
     initiator: Unit
+    "What the initiator was: unit, weapon, static, scenery, airbase or unknown."
+    initiatorKind: String
     target: Target
     "Coalition of the target. Equal to coalition means a teamkill."
     targetCoalition: String

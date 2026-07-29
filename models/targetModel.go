@@ -7,15 +7,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// What a target turned out to be. Anything that was not a unit used to be
-// discarded entirely, which lost the target on most air-to-ground kills.
+// What an event object turned out to be. Used for both the initiator and the
+// target of an event, since DCS models them with the same oneof. Anything that
+// was not a unit used to be discarded entirely, which lost the target on most
+// air-to-ground kills and the initiator on roughly half of all hits.
 const (
-	TargetKindUnit    = "unit"
-	TargetKindWeapon  = "weapon"
-	TargetKindStatic  = "static"
-	TargetKindScenery = "scenery"
-	TargetKindAirbase = "airbase"
-	TargetKindUnknown = "unknown"
+	ObjectKindUnit    = "unit"
+	ObjectKindWeapon  = "weapon"
+	ObjectKindStatic  = "static"
+	ObjectKindScenery = "scenery"
+	ObjectKindAirbase = "airbase"
+	ObjectKindUnknown = "unknown"
 )
 
 type Target struct {
@@ -63,7 +65,7 @@ func ensureTarget(tx *gorm.DB, tgt Target) (*uint, error) {
 
 	target.Kind = tgt.Kind
 	if target.Kind == "" {
-		target.Kind = TargetKindUnknown
+		target.Kind = ObjectKindUnknown
 	}
 
 	if err := tx.Where("unit_id = ? AND weapon_id = ? AND kind = ?", target.UnitID, target.WeaponID, target.Kind).

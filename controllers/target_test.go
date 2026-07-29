@@ -15,8 +15,8 @@ func TestBuildTargetUnit(t *testing.T) {
 
 	target, coalition := buildTarget(protoTarget)
 
-	if target.Kind != models.TargetKindUnit {
-		t.Errorf("expected kind %q, got %q", models.TargetKindUnit, target.Kind)
+	if target.Kind != models.ObjectKindUnit {
+		t.Errorf("expected kind %q, got %q", models.ObjectKindUnit, target.Kind)
 	}
 	if target.Unit.Type != "Su-27" {
 		t.Errorf("expected unit type Su-27, got %q", target.Unit.Type)
@@ -35,8 +35,8 @@ func TestBuildTargetWeapon(t *testing.T) {
 
 	target, _ := buildTarget(protoTarget)
 
-	if target.Kind != models.TargetKindWeapon {
-		t.Errorf("expected kind %q, got %q", models.TargetKindWeapon, target.Kind)
+	if target.Kind != models.ObjectKindWeapon {
+		t.Errorf("expected kind %q, got %q", models.ObjectKindWeapon, target.Kind)
 	}
 	if target.Weapon.Type != "AIM_120C" {
 		t.Errorf("expected weapon type AIM_120C, got %q", target.Weapon.Type)
@@ -55,8 +55,8 @@ func TestBuildTargetStatic(t *testing.T) {
 
 	target, coalition := buildTarget(protoTarget)
 
-	if target.Kind != models.TargetKindStatic {
-		t.Errorf("expected kind %q, got %q", models.TargetKindStatic, target.Kind)
+	if target.Kind != models.ObjectKindStatic {
+		t.Errorf("expected kind %q, got %q", models.ObjectKindStatic, target.Kind)
 	}
 	if target.Unit.Type != "Warehouse" {
 		t.Errorf("expected Warehouse, got %q", target.Unit.Type)
@@ -73,8 +73,8 @@ func TestBuildTargetScenery(t *testing.T) {
 
 	target, coalition := buildTarget(protoTarget)
 
-	if target.Kind != models.TargetKindScenery {
-		t.Errorf("expected kind %q, got %q", models.TargetKindScenery, target.Kind)
+	if target.Kind != models.ObjectKindScenery {
+		t.Errorf("expected kind %q, got %q", models.ObjectKindScenery, target.Kind)
 	}
 	if target.Unit.Type != "Bridge" {
 		t.Errorf("expected Bridge, got %q", target.Unit.Type)
@@ -88,8 +88,8 @@ func TestBuildTargetScenery(t *testing.T) {
 func TestBuildTargetNil(t *testing.T) {
 	target, coalition := buildTarget(nil)
 
-	if target.Kind != models.TargetKindUnknown {
-		t.Errorf("expected kind %q, got %q", models.TargetKindUnknown, target.Kind)
+	if target.Kind != models.ObjectKindUnknown {
+		t.Errorf("expected kind %q, got %q", models.ObjectKindUnknown, target.Kind)
 	}
 	if coalition != models.CoalitionUnknown {
 		t.Errorf("expected unknown, got %q", coalition)
