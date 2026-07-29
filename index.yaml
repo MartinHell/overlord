@@ -3,6 +3,19 @@ entries:
   overlord:
   - apiVersion: v2
     appVersion: v0.0.1
+    created: "2026-07-29T21:51:29.76669237Z"
+    description: A Helm chart for Kubernetes
+    digest: f1064a41e4c7c7b44ca5d0b4344071378b47836cc5ef310efb6d60c6c517605e
+    maintainers:
+    - name: MartinHell
+      url: https://github.com/MartinHell
+    name: overlord
+    type: application
+    urls:
+    - https://github.com/MartinHell/overlord/releases/download/overlord-0.4.0/overlord-0.4.0.tgz
+    version: 0.4.0
+  - apiVersion: v2
+    appVersion: v0.0.1
     created: "2026-07-29T21:47:47.012156496Z"
     description: A Helm chart for Kubernetes
     digest: 5305576351764e604378852efb3fa8a24215f56860bf0a24ce0b852219220492
@@ -40,4 +53,4 @@ entries:
     urls:
     - https://github.com/MartinHell/overlord/releases/download/overlord-0.1.0/overlord-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-29T21:47:47.012169656Z"
+generated: "2026-07-29T21:51:29.766713142Z"
