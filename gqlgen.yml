@@ -43,6 +43,15 @@ models:
   CoalitionKills:
     model:
       - github.com/MartinHell/overlord/models.CoalitionKills
+  WeaponEffectiveness:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponEffectiveness
+  PlayerActivity:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerActivity
+  LandingGrade:
+    model:
+      - github.com/MartinHell/overlord/models.LandingGrade
   UnitWeaponBreakdown:
     model:
       - github.com/MartinHell/overlord/models.UnitWeaponBreakdown

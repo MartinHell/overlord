@@ -39,6 +39,43 @@ type Event {
     updatedAt: Time!
 }
 
+"Shots against hits against kills for one weapon type."
+type WeaponEffectiveness {
+    weaponType: String!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    """
+    Hits divided by shots. A ratio, not a percentage: it exceeds 1 for
+    submunition and splash weapons, because DCS emits one shot event per launch
+    but one hit event per object damaged. Hits on scenery are excluded. Zero when
+    the weapon has no shot events, as with guns.
+    """
+    hitsPerShot: Float!
+    "Kills divided by shots. Also a ratio that can exceed 1, since one weapon can destroy several units."
+    killsPerShot: Float!
+}
+
+"How many sorties a player started, and how they ended."
+type PlayerActivity {
+    playerID: ID!
+    playerName: String!
+    takeoffs: Int!
+    landings: Int!
+    crashes: Int!
+    ejections: Int!
+    deaths: Int!
+}
+
+"One graded landing. The grade is free text as DCS reported it."
+type LandingGrade {
+    playerName: String
+    unitType: String
+    place: String
+    grade: String
+    missionTime: Float!
+}
+
 type CoalitionKills {
     coalition: String!
     kills: Int!
@@ -120,6 +157,12 @@ type Query {
     events(first: Int, after: String, eventType: String, coalition: String): EventConnection
     "Kill tally per coalition, covering both sides."
     killsByCoalition: [CoalitionKills!]!
+    "Shots, hits, kills, accuracy and Pk per weapon type."
+    weaponEffectiveness: [WeaponEffectiveness!]!
+    "Sorties per player and how they ended."
+    playerActivity: [PlayerActivity!]!
+    "Recent graded landings, newest first."
+    landingGrades(first: Int): [LandingGrade!]!
     event(id: ID!): Event
     players: [Player]
     player(id: ID!): Player

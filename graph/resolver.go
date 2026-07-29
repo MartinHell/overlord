@@ -34,6 +34,11 @@ func (r *playerResolver) DeletedAt(ctx context.Context, obj *models.Player) (*ti
 }
 
 // PlayerID is the resolver for the playerID field.
+func (r *playerActivityResolver) PlayerID(ctx context.Context, obj *models.PlayerActivity) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
 func (r *playerShotBreakdownResolver) PlayerID(ctx context.Context, obj *models.PlayerShotBreakdown) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
@@ -87,6 +92,26 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 // KillsByCoalition returns the kill tally for every coalition at once.
 func (r *queryResolver) KillsByCoalition(ctx context.Context) ([]*models.CoalitionKills, error) {
 	return controllers.GetKillsByCoalition()
+}
+
+// WeaponEffectiveness is the resolver for the weaponEffectiveness field.
+func (r *queryResolver) WeaponEffectiveness(ctx context.Context) ([]*models.WeaponEffectiveness, error) {
+	return controllers.GetWeaponEffectiveness()
+}
+
+// PlayerActivity is the resolver for the playerActivity field.
+func (r *queryResolver) PlayerActivity(ctx context.Context) ([]*models.PlayerActivity, error) {
+	return controllers.GetPlayerActivity()
+}
+
+// LandingGrades is the resolver for the landingGrades field.
+func (r *queryResolver) LandingGrades(ctx context.Context, first *int) ([]*models.LandingGrade, error) {
+	limit := 0
+	if first != nil {
+		limit = *first
+	}
+
+	return controllers.GetLandingGrades(limit)
 }
 
 // Event is the resolver for the event field.
@@ -194,6 +219,11 @@ func (r *Resolver) Event() generated.EventResolver { return &eventResolver{r} }
 // Player returns generated.PlayerResolver implementation.
 func (r *Resolver) Player() generated.PlayerResolver { return &playerResolver{r} }
 
+// PlayerActivity returns generated.PlayerActivityResolver implementation.
+func (r *Resolver) PlayerActivity() generated.PlayerActivityResolver {
+	return &playerActivityResolver{r}
+}
+
 // PlayerShotBreakdown returns generated.PlayerShotBreakdownResolver implementation.
 func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
 	return &playerShotBreakdownResolver{r}
@@ -219,6 +249,7 @@ func (r *Resolver) Weapon() generated.WeaponResolver { return &weaponResolver{r}
 type (
 	eventResolver               struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
+	playerActivityResolver      struct{ *Resolver }
 	playerShotBreakdownResolver struct{ *Resolver }
 	queryResolver               struct{ *Resolver }
 	targetResolver              struct{ *Resolver }

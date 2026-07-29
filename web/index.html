@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlord</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <h1>Overlord</h1>
+  <div class="meta">
+    <span id="status" class="status">connecting…</span>
+    <label><input type="checkbox" id="autorefresh" checked> auto-refresh</label>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
+</header>
+
+<main>
+  <section id="coalitions-section">
+    <h2>Coalitions</h2>
+    <div id="coalitions" class="cards"></div>
+  </section>
+
+  <section>
+    <h2>Weapon effectiveness</h2>
+    <p class="note">Rows named after an airframe rather than a weapon are collisions: DCS reports the aircraft as the weapon when one is flown into something. Ratios, not percentages, and they legitimately exceed 1: DCS emits one shot event per launch but one hit event per object damaged, so submunition and splash weapons register several hits from a single shot. Hits on scenery are excluded. Guns emit hits but no shot events, so anything with no shots shows &mdash;.</p>
+    <div class="scroll"><table id="weapons"></table></div>
+  </section>
+
+  <section>
+    <h2>Shots by player</h2>
+    <div class="scroll"><table id="shots"></table></div>
+  </section>
+
+  <section>
+    <h2>Sorties</h2>
+    <div class="scroll"><table id="activity"></table></div>
+  </section>
+
+  <section>
+    <h2>Landing grades</h2>
+    <div class="scroll"><table id="landings"></table></div>
+  </section>
+
+  <section>
+    <h2>Recent events</h2>
+    <div class="scroll"><table id="events"></table></div>
+  </section>
+</main>
+
+<footer>
+  <span id="footer-note"></span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

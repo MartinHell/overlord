@@ -9,6 +9,7 @@ import (
 	"github.com/MartinHell/overlord/graph"
 	"github.com/MartinHell/overlord/graph/generated"
 	"github.com/MartinHell/overlord/logs"
+	"github.com/MartinHell/overlord/web"
 )
 
 func GraphQLHandler() {
@@ -27,24 +28,30 @@ func GraphQLHandler() {
 	mux := http.NewServeMux()
 	mux.Handle("/query", srv)
 
-	// Health endpoint for container probes. It is deliberately separate from the
-	// playground, which is not served in production.
+	// Health endpoint for container probes. Deliberately separate from anything
+	// that renders, so it stays valid whatever else is or is not mounted.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// Static files only; see the web package for why this is not server-rendered.
+	mux.Handle("/", http.FileServer(http.FS(web.FS())))
+
+	// The playground moves off / now that the dashboard lives there. It stays
+	// out of production entirely: it is an unauthenticated query console.
 	if environment != "production" {
-		mux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
+		mux.Handle("/playground", playground.Handler("GraphQL Playground", "/query"))
 	}
 
-	logs.Sugar.Infof("GraphQL server listening on port %s", port)
+	logs.Sugar.Infof("Dashboard available at http://localhost:%s/", port)
+	logs.Sugar.Infof("GraphQL API listening on http://localhost:%s/query", port)
 	if environment != "production" {
-		logs.Sugar.Infof("GraphQL playground available at http://localhost:%s/", port)
+		logs.Sugar.Infof("GraphQL playground available at http://localhost:%s/playground", port)
 	}
-	err := http.ListenAndServe(":"+port, mux)
-	if err != nil {
+
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		logs.Sugar.Fatal(err)
 	}
 }

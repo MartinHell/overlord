@@ -184,3 +184,105 @@ func GetKillsByCoalition() ([]*models.CoalitionKills, error) {
 
 	return result, nil
 }
+
+// GetWeaponEffectiveness totals shots, hits and kills per weapon type.
+//
+// Hits and kills against scenery are excluded: DCS reports a blast catching a
+// tree as a hit, and counting those would inflate accuracy for anything with a
+// warhead. Shots have no target, so they are counted unconditionally.
+func GetWeaponEffectiveness() ([]*models.WeaponEffectiveness, error) {
+	var rows []models.WeaponEffectiveness
+
+	err := initializers.DB.Model(&models.Event{}).
+		Select(`weapons.type AS weapon_type,
+			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
+			SUM(CASE WHEN events.event = 'hit'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills`).
+		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.event IN ?", []string{"shot", "hit", "kill"}).
+		Group("weapons.type").
+		Order("weapons.type").
+		Scan(&rows).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to aggregate weapon effectiveness: %v", err)
+		return nil, err
+	}
+
+	result := make([]*models.WeaponEffectiveness, 0, len(rows))
+	for i := range rows {
+		result = append(result, &rows[i])
+	}
+
+	return result, nil
+}
+
+// GetPlayerActivity summarises sorties per player: how many started, how many
+// ended in a landing, and how many ended badly.
+func GetPlayerActivity() ([]*models.PlayerActivity, error) {
+	var rows []models.PlayerActivity
+
+	err := initializers.DB.Model(&models.Event{}).
+		Select(`players.player_id AS player_id,
+			players.player_name AS player_name,
+			SUM(CASE WHEN events.event IN ('takeoff', 'runway_takeoff') THEN 1 ELSE 0 END) AS takeoffs,
+			SUM(CASE WHEN events.event IN ('land', 'runway_touch') THEN 1 ELSE 0 END) AS landings,
+			SUM(CASE WHEN events.event = 'crash' THEN 1 ELSE 0 END) AS crashes,
+			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections,
+			SUM(CASE WHEN events.event = 'pilot_dead' THEN 1 ELSE 0 END) AS deaths`).
+		Joins("JOIN players ON players.player_id = events.player_id").
+		Group("players.player_id, players.player_name").
+		Order("players.player_name").
+		Scan(&rows).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to aggregate player activity: %v", err)
+		return nil, err
+	}
+
+	result := make([]*models.PlayerActivity, 0, len(rows))
+	for i := range rows {
+		result = append(result, &rows[i])
+	}
+
+	return result, nil
+}
+
+// GetLandingGrades returns recent graded landings, newest first. The grade is
+// free text as DCS reported it, which for carrier traps is the wire and the
+// deviations.
+func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
+	if limit <= 0 {
+		limit = defaultPageSize
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+
+	var rows []models.LandingGrade
+
+	err := initializers.DB.Model(&models.Event{}).
+		Select(`players.player_name AS player_name,
+			units.type AS unit_type,
+			events.place AS place,
+			events.comment AS grade,
+			events.mission_time AS mission_time`).
+		Joins("LEFT JOIN players ON players.player_id = events.player_id").
+		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where("events.event = ?", "landing_quality_mark").
+		Order("events.id DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to query landing grades: %v", err)
+		return nil, err
+	}
+
+	result := make([]*models.LandingGrade, 0, len(rows))
+	for i := range rows {
+		result = append(result, &rows[i])
+	}
+
+	return result, nil
+}
