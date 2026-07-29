@@ -23,7 +23,6 @@ func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
 	var connectedPlayer models.Player
 
 	connectedPlayer.FromStreamEventsResponse_ConnectEvent(p)
-	connectedPlayer.IP = p.GetAddr()
 
 	// The connect event carries the UCID directly, so the player can be stored
 	// without consulting the server's player list.
@@ -32,12 +31,10 @@ func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
 		return err
 	}
 
-	// Reconnecting under a new name or from a new address is common, so refresh
-	// the stored details.
+	// Reconnecting under a new name is common, so refresh the stored details.
 	updated := models.Player{
 		UCID:       p.GetUcid(),
 		PlayerName: &p.Name,
-		IP:         p.GetAddr(),
 	}
 
 	if err := connectedPlayer.UpdatePlayer(&updated); err != nil {
@@ -50,10 +47,9 @@ func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
 	// Seed rather than invalidate: the connect event already tells us everything
 	// the player list would, so there is no need to fetch it again.
 	models.Players.Add(&net.GetPlayersResponse_GetPlayerInfo{
-		Id:            p.GetId(),
-		Name:          p.GetName(),
-		Ucid:          p.GetUcid(),
-		RemoteAddress: p.GetAddr(),
+		Id:   p.GetId(),
+		Name: p.GetName(),
+		Ucid: p.GetUcid(),
 	})
 
 	logs.Sugar.Infof("Player connected: %s (%s)", connectedPlayer.GetPlayerName(), p.GetUcid())

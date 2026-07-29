@@ -20,7 +20,6 @@ type Player struct {
 	PlayerName *string
 	//Unit       `gorm:"foreignKey:UnitID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 	UCID string `gorm:"unique;not null"`
-	IP   string
 	//Id   uint32
 	//UnitID     uint
 }
@@ -143,14 +142,6 @@ func (p *Player) UpdatePlayer(up *Player) error {
 		p.UCID = up.UCID
 		hasChanges = true
 	}
-	if up.IP != "" {
-		p.IP = up.IP
-		hasChanges = true
-	} /*
-		if up.Id != 0 {
-			p.Id = up.Id
-			hasChanges = true
-		} */
 
 	if hasChanges {
 		result := initializers.DB.Model(&p).Where(ucidQuery, p.UCID).Updates(p)
@@ -233,13 +224,6 @@ func (p *Player) GetPlayerName() string {
 func (p *Player) GetUCID() string {
 	if p != nil {
 		return p.UCID
-	}
-	return ""
-}
-
-func (p *Player) GetIP() string {
-	if p != nil {
-		return p.IP
 	}
 	return ""
 }

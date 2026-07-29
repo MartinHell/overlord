@@ -17,6 +17,10 @@ func main() {
 		logs.Sugar.Fatalf("Failed to deduplicate weapons: %v", err)
 	}
 
+	if err := dropPlayerIP(initializers.DB); err != nil {
+		logs.Sugar.Fatalf("Failed to drop the player IP column: %v", err)
+	}
+
 	if err := initializers.DB.AutoMigrate(
 		&models.Player{},
 		&models.Unit{},
@@ -28,6 +32,27 @@ func main() {
 	}
 
 	logs.Sugar.Infoln("Migration complete")
+}
+
+// dropPlayerIP removes the players.ip column and any addresses already stored
+// in it. AutoMigrate never drops columns, so without this the data would linger
+// in every existing database even though nothing writes or reads it any more.
+//
+// IP addresses are personal data, overlord had no use for them, and the field
+// was readable over an unauthenticated API. Not collecting them is simpler than
+// protecting them.
+func dropPlayerIP(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&models.Player{}) {
+		return nil
+	}
+
+	if !db.Migrator().HasColumn(&models.Player{}, "ip") {
+		return nil
+	}
+
+	logs.Sugar.Infoln("Dropping the players.ip column and the addresses in it")
+
+	return db.Migrator().DropColumn(&models.Player{}, "ip")
 }
 
 // dedupeWeapons collapses duplicate weapon rows before the unique index on

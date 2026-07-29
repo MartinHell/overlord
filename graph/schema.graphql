@@ -33,7 +33,6 @@ type Player {
     deletedAt: Time
     playerName: String
     ucid: String!
-    ip: String
 }
 
 type Unit {
