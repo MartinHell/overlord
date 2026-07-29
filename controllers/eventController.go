@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/common"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
@@ -35,6 +36,66 @@ func GetEventsByType(eventType string) []*models.Event {
 	initializers.ApplyPreloads(initializers.DB).Where("event = ?", eventType).Find(&events)
 
 	return events
+}
+
+// GetEventsFiltered returns events optionally narrowed by type and by the
+// initiator's coalition. An empty value for either means "no filter", which is
+// how a caller asks for both sides at once.
+func GetEventsFiltered(eventType, coalition string) []*models.Event {
+	var events []*models.Event
+
+	query := initializers.ApplyPreloads(initializers.DB)
+
+	if eventType != "" {
+		query = query.Where("event = ?", eventType)
+	}
+	if coalition != "" {
+		query = query.Where("coalition = ?", coalition)
+	}
+
+	query.Find(&events)
+
+	return events
+}
+
+// GetKillsByCoalition tallies kill events per initiating coalition, covering
+// both sides in a single query.
+func GetKillsByCoalition() []*models.CoalitionKills {
+	var events []*models.Event
+
+	initializers.DB.Where("event = ?", "kill").Find(&events)
+
+	order := []string{}
+	tally := map[string]*models.CoalitionKills{}
+
+	for _, event := range events {
+		coalition := event.Coalition
+		if coalition == "" {
+			coalition = models.CoalitionUnknown
+		}
+
+		if tally[coalition] == nil {
+			tally[coalition] = &models.CoalitionKills{Coalition: coalition}
+			order = append(order, coalition)
+		}
+
+		tally[coalition].Kills++
+
+		// Only count a teamkill when both sides are actually known. Two unknown
+		// coalitions compare equal but say nothing about whose side anyone was
+		// on, and historical events predating coalition tracking are all
+		// unknown.
+		if coalition != models.CoalitionUnknown && event.TargetCoalition == coalition {
+			tally[coalition].Teamkills++
+		}
+	}
+
+	result := make([]*models.CoalitionKills, 0, len(order))
+	for _, coalition := range order {
+		result = append(result, tally[coalition])
+	}
+
+	return result
 }
 
 func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
@@ -214,33 +275,41 @@ func exponentialBackoff(attempt int, base, max time.Duration) time.Duration {
 	return time.Duration(delay)
 }
 
+// resolvePlayer maps the unit behind an event to a player record. A unit flown
+// by a human resolves to that human; everything else is attributed to the
+// synthetic AI player for the unit's coalition, so red and blue AI are tracked
+// as separate players rather than lumped together.
+func resolvePlayer(u *common.Unit) models.Player {
+	if u.GetPlayerName() != "" {
+		var player models.Player
+		player.PlayerName = u.PlayerName
+		if err := player.GetPlayerFromDB(); err != nil {
+			logs.Sugar.Errorf("Failed to resolve player %q: %v", u.GetPlayerName(), err)
+		}
+		return player
+	}
+
+	return models.AIPlayerFor(models.CoalitionFromUnit(u))
+}
+
 func CrashEvent(p *mission.StreamEventsResponse_CrashEvent) error {
 	logs.Sugar.Debugf("Crash event: %v", p)
 
-	// Check if player already exists in DB
-	var connectedPlayer models.Player
-
 	u := p.Initiator.GetUnit()
 
-	if u.GetPlayerName() != "" {
-		connectedPlayer.PlayerName = u.PlayerName
+	connectedPlayer := resolvePlayer(u)
 
-		connectedPlayer.GetPlayerFromDB()
-	} else {
-		// If no player is attached to the unit, it's an AI unit
-		connectedPlayer = models.AIPlayer
-	}
-
-	// Create event in DB
 	initiator := models.Unit{}
-
 	initiator.FromCommonUnit(u)
 
-	event := models.Event{}
+	event := models.Event{Coalition: models.CoalitionFromUnit(u)}
 
 	event.FromStreamEventsResponse("crash", &connectedPlayer, &initiator, nil, nil)
 
-	event.CreateEvent()
+	if err := event.CreateEvent(); err != nil {
+		logs.Sugar.Errorf("Failed to store crash event: %v", err)
+		return err
+	}
 
 	return nil
 }
@@ -252,32 +321,23 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 	// Set Weapon
 	var weapon models.Weapon
 
-	weapon.Type = p.Weapon.Type
-
-	// Check if player already exists in DB
-	var connectedPlayer models.Player
+	weapon.Type = p.GetWeapon().GetType()
 
 	u := p.Initiator.GetUnit()
 
-	if u.GetPlayerName() != "" {
-		connectedPlayer.PlayerName = u.PlayerName
+	connectedPlayer := resolvePlayer(u)
 
-		connectedPlayer.GetPlayerFromDB()
-	} else {
-		// If no player is attached to the unit, it's an AI unit
-		connectedPlayer = models.AIPlayer
-	}
-
-	// Create event in DB
 	initiator := models.Unit{}
-
 	initiator.FromCommonUnit(u)
 
-	event := models.Event{}
+	event := models.Event{Coalition: models.CoalitionFromUnit(u)}
 
 	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil)
 
-	event.CreateEvent()
+	if err := event.CreateEvent(); err != nil {
+		logs.Sugar.Errorf("Failed to store shot event: %v", err)
+		return err
+	}
 
 	return nil
 }
@@ -297,18 +357,13 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 	// Check if player already exists in DB
 	var connectedPlayer models.Player
 	initiator := models.Unit{}
+	coalition := models.CoalitionUnknown
 
 	if p.Initiator != nil {
 		u := p.Initiator.GetUnit()
 
-		if u.GetPlayerName() != "" {
-			connectedPlayer.PlayerName = u.PlayerName
-
-			connectedPlayer.GetPlayerFromDB()
-		} else {
-			// If no player is attached to the unit, it's an AI unit
-			connectedPlayer = models.AIPlayer
-		}
+		connectedPlayer = resolvePlayer(u)
+		coalition = models.CoalitionFromUnit(u)
 
 		initiator.FromCommonUnit(u)
 	}
@@ -317,10 +372,12 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 
 	// Create target
 	target := models.Target{}
+	targetCoalition := models.CoalitionUnknown
 	if p.Target != nil {
 		tgt := p.Target.GetUnit()
 
 		if tgt != nil {
+			targetCoalition = models.CoalitionFromUnit(tgt)
 
 			if tgt.GetPlayerName() != "" {
 				target.Player.PlayerName = tgt.PlayerName
@@ -336,11 +393,14 @@ func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
 		}
 	}
 
-	event := models.Event{}
+	event := models.Event{Coalition: coalition, TargetCoalition: targetCoalition}
 
 	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target)
 
-	event.CreateEvent()
+	if err := event.CreateEvent(); err != nil {
+		logs.Sugar.Errorf("Failed to store kill event: %v", err)
+		return err
+	}
 
 	return nil
 }
@@ -366,9 +426,8 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 			return err
 		}
 	} else {
-		// If no player is attached to the unit, it's an AI unit. Work on a copy
-		// so the package-level template is not mutated by the database lookup.
-		aiPlayer := models.AIPlayer
+		// No player attached means an AI unit, tracked per coalition.
+		aiPlayer := models.AIPlayerFor(models.CoalitionFromUnit(u))
 		if err := aiPlayer.EnsureInDB(); err != nil {
 			logs.Sugar.Errorf(logCreatePlayer, err)
 			return err

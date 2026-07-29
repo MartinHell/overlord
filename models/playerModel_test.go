@@ -33,15 +33,48 @@ func TestFindPlayerByNameFindsPlayer(t *testing.T) {
 	}
 }
 
-func TestFindPlayerByNameResolvesAIPlayer(t *testing.T) {
+func TestFindPlayerByNameResolvesAIPlayerPerCoalition(t *testing.T) {
 	var cache PlayerCache
 
-	got := cache.FindPlayerByName(*AIPlayer.PlayerName)
-	if got == nil {
-		t.Fatal("expected the synthetic AI player, got nil")
+	for _, coalition := range []string{CoalitionRed, CoalitionBlue, CoalitionNeutral} {
+		ai := AIPlayerFor(coalition)
+
+		got := cache.FindPlayerByName(ai.GetPlayerName())
+		if got == nil {
+			t.Fatalf("expected the synthetic AI player for %s, got nil", coalition)
+		}
+		if got.GetUcid() != ai.UCID {
+			t.Fatalf("expected UCID %q, got %q", ai.UCID, got.GetUcid())
+		}
 	}
-	if got.GetUcid() != AIPlayer.UCID {
-		t.Fatalf("expected UCID %q, got %q", AIPlayer.UCID, got.GetUcid())
+}
+
+func TestAIPlayersAreDistinctPerCoalition(t *testing.T) {
+	red := AIPlayerFor(CoalitionRed)
+	blue := AIPlayerFor(CoalitionBlue)
+
+	if red.UCID == blue.UCID {
+		t.Fatalf("red and blue AI must not share a UCID, both were %q", red.UCID)
+	}
+	if red.GetPlayerName() == blue.GetPlayerName() {
+		t.Fatalf("red and blue AI must not share a name, both were %q", red.GetPlayerName())
+	}
+	if !IsAIPlayerName(red.GetPlayerName()) || !IsAIPlayerName(blue.GetPlayerName()) {
+		t.Fatal("AI player names must be recognised as AI")
+	}
+	if IsAIPlayerName("Meekss") {
+		t.Fatal("a human name must not be treated as AI")
+	}
+}
+
+func TestAIPlayerForEmptyCoalitionFallsBack(t *testing.T) {
+	ai := AIPlayerFor("")
+
+	if ai.UCID != aiUCIDPrefix+CoalitionUnknown {
+		t.Fatalf("expected the unknown-coalition UCID, got %q", ai.UCID)
+	}
+	if got := coalitionFromAIName(ai.GetPlayerName()); got != CoalitionUnknown {
+		t.Fatalf("expected coalition %q back out of the name, got %q", CoalitionUnknown, got)
 	}
 }
 

@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
@@ -29,11 +30,41 @@ type Player struct {
 	//UnitID     uint
 }
 
-var aiPlayerName = "AI-Unit"
+// aiUCIDPrefix marks the synthetic players that stand in for AI units. Real
+// UCIDs are 32-character hex strings, so this cannot collide with one.
+const aiUCIDPrefix = "ai-"
 
-var AIPlayer = Player{
-	PlayerName: &aiPlayerName,
-	UCID:       "0",
+// AIPlayerFor returns the synthetic player representing AI units of a given
+// coalition. AI is tracked per coalition so that red and blue AI show up as
+// separate players and their kills can be counted against each other.
+func AIPlayerFor(coalition string) Player {
+	if coalition == "" {
+		coalition = CoalitionUnknown
+	}
+
+	name := "AI-Unit (" + coalition + ")"
+
+	return Player{
+		PlayerName: &name,
+		UCID:       aiUCIDPrefix + coalition,
+	}
+}
+
+// IsAIPlayerName reports whether a name belongs to one of the synthetic AI
+// players rather than a human who might appear in the DCS player list.
+func IsAIPlayerName(name string) bool {
+	return strings.HasPrefix(name, "AI-Unit")
+}
+
+// coalitionFromAIName recovers the coalition from a synthetic AI player name,
+// the inverse of the name built by AIPlayerFor.
+func coalitionFromAIName(name string) string {
+	open := strings.Index(name, "(")
+	close := strings.LastIndex(name, ")")
+	if open < 0 || close < open {
+		return CoalitionUnknown
+	}
+	return name[open+1 : close]
 }
 
 // GetPlayerFromDB resolves the player's UCID from the DCS player list and, if
@@ -227,13 +258,15 @@ func (p *Player) GetIP() string {
 // Find Player in cache based on Name
 func (p *PlayerCache) FindPlayerByName(name string) *net.GetPlayersResponse_GetPlayerInfo {
 
-	if name == *AIPlayer.PlayerName {
-		player := &net.GetPlayersResponse_GetPlayerInfo{
+	// The synthetic AI players never appear in the server's player list, so
+	// resolve them locally instead of searching for them.
+	if IsAIPlayerName(name) {
+		ai := AIPlayerFor(coalitionFromAIName(name))
+		return &net.GetPlayersResponse_GetPlayerInfo{
 			Id:   0,
-			Name: *AIPlayer.PlayerName,
-			Ucid: AIPlayer.UCID,
+			Name: ai.GetPlayerName(),
+			Ucid: ai.UCID,
 		}
-		return player
 	}
 	logs.Sugar.Debugf("Finding player by name: %s", name)
 	for _, player := range p.Players {

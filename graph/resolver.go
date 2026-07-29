@@ -39,14 +39,18 @@ func (r *playerShotBreakdownResolver) PlayerID(ctx context.Context, obj *models.
 }
 
 // Events is the resolver for the events field.
-func (r *queryResolver) Events(ctx context.Context, first *int, after *string, eventType *string) (*models.EventConnection, error) {
-	events := []*models.Event{}
-
-	if eventType != nil && *eventType != "" {
-		events = controllers.GetEventsByType(*eventType)
-	} else {
-		events = controllers.GetEvents()
+func (r *queryResolver) Events(ctx context.Context, first *int, after *string, eventType *string, coalition *string) (*models.EventConnection, error) {
+	filterType := ""
+	if eventType != nil {
+		filterType = *eventType
 	}
+
+	filterCoalition := ""
+	if coalition != nil {
+		filterCoalition = *coalition
+	}
+
+	events := controllers.GetEventsFiltered(filterType, filterCoalition)
 
 	if len(events) == 0 {
 		return &models.EventConnection{
@@ -98,6 +102,11 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		PageInfo: pageInfo,
 		Edges:    edges,
 	}, nil
+}
+
+// KillsByCoalition returns the kill tally for every coalition at once.
+func (r *queryResolver) KillsByCoalition(ctx context.Context) ([]*models.CoalitionKills, error) {
+	return controllers.GetKillsByCoalition(), nil
 }
 
 // Event is the resolver for the event field.

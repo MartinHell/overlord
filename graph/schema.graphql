@@ -4,11 +4,21 @@ type Event {
     id: ID!
     player: Player
     event: String!
+    "Coalition of the initiator when the event happened: red, blue, neutral or unknown."
+    coalition: String
     initiator: Unit
     target: Target
+    "Coalition of the target. Equal to coalition means a teamkill."
+    targetCoalition: String
     weapon: Weapon
     createdAt: Time!
     updatedAt: Time!
+}
+
+type CoalitionKills {
+    coalition: String!
+    kills: Int!
+    teamkills: Int!
 }
 
 type Player {
@@ -81,7 +91,10 @@ type WeaponShotBreakdown {
 }
 
 type Query {
-    events(first: Int, after: String, eventType: String): EventConnection
+    "Omit coalition to get both sides at once; pass red or blue to narrow."
+    events(first: Int, after: String, eventType: String, coalition: String): EventConnection
+    "Kill tally per coalition, covering both sides."
+    killsByCoalition: [CoalitionKills!]!
     event(id: ID!): Event
     players: [Player]
     player(id: ID!): Player
