@@ -13,6 +13,11 @@ import (
 	"io/fs"
 )
 
+// Note when editing these files: go:embed reads them at build time, so a change
+// is not visible until the binary is rebuilt. Editing app.js and reloading the
+// browser will keep serving the previous version, which looks exactly like a
+// caching problem and is not one.
+//
 //go:embed index.html app.css app.js
 var files embed.FS
 

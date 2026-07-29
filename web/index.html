@@ -3,55 +3,103 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Overlord</title>
+<title>Overlord — debrief</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header>
-  <h1>Overlord</h1>
-  <div class="meta">
-    <span id="status" class="status">connecting…</span>
-    <label><input type="checkbox" id="autorefresh" checked> auto-refresh</label>
-    <button id="refresh" type="button">Refresh</button>
+
+<!-- Status strip: the MFD header. Mission clock, totals, link state. -->
+<div class="strip">
+  <div class="strip-id">
+    <span class="callsign">OVERLORD</span>
+    <span class="sub">debrief</span>
   </div>
-</header>
+
+  <dl class="readout">
+    <div><dt>mission time</dt><dd id="ro-clock">--:--:--</dd></div>
+    <div><dt>events</dt><dd id="ro-events">0</dd></div>
+    <div><dt>sorties</dt><dd id="ro-sorties">0</dd></div>
+    <div><dt>splash</dt><dd id="ro-kills">0</dd></div>
+  </dl>
+
+  <div class="strip-ctl">
+    <label class="field">
+      <span class="vh">Filter everything</span>
+      <input type="search" id="q" placeholder="filter: callsign, airframe, weapon…" autocomplete="off">
+    </label>
+    <button id="theme" type="button">kneeboard</button>
+    <label class="toggle"><input type="checkbox" id="live" checked> live</label>
+    <span id="link" class="link" role="status">linking</span>
+  </div>
+</div>
 
 <main>
-  <section id="coalitions-section">
-    <h2>Coalitions</h2>
-    <div id="coalitions" class="cards"></div>
+
+  <!-- Blue and red are semantic in DCS, so they carry the colour. Nothing else does. -->
+  <section class="panel" id="p-coalition">
+    <div class="phead"><h2>coalition standing</h2></div>
+    <div id="coalition" class="standing"></div>
   </section>
 
-  <section>
-    <h2>Weapon effectiveness</h2>
-    <p class="note">Rows named after an airframe rather than a weapon are collisions: DCS reports the aircraft as the weapon when one is flown into something. Ratios, not percentages, and they legitimately exceed 1: DCS emits one shot event per launch but one hit event per object damaged, so submunition and splash weapons register several hits from a single shot. Hits on scenery are excluded. Guns emit hits but no shot events, so anything with no shots shows &mdash;.</p>
-    <div class="scroll"><table id="weapons"></table></div>
+  <section class="panel" id="p-weapons">
+    <div class="phead">
+      <h2>stores expended</h2>
+      <div class="chips" id="weapon-class" role="group" aria-label="Filter by store type">
+        <button type="button" data-class="all" class="on">all</button>
+        <button type="button" data-class="ordnance">ordnance</button>
+        <button type="button" data-class="gun">guns</button>
+        <button type="button" data-class="collision">collisions</button>
+      </div>
+    </div>
+    <p class="note">
+      Hits per shot is a ratio and exceeds 1 legitimately — DCS reports one shot per launch but one hit per
+      object damaged, so cluster and splash weapons register several. Guns report hits and no shots, so they
+      have no ratio. Rows named after an airframe are collisions, where DCS names the aircraft as the weapon.
+    </p>
+    <div class="tw"><table id="weapons" class="grid"></table></div>
   </section>
 
-  <section>
-    <h2>Shots by player</h2>
-    <div class="scroll"><table id="shots"></table></div>
+  <div class="split">
+    <section class="panel" id="p-pilots">
+      <div class="phead"><h2>pilot log</h2></div>
+      <div class="tw"><table id="pilots" class="grid"></table></div>
+    </section>
+
+    <section class="panel" id="p-traps">
+      <div class="phead"><h2>landing grades</h2></div>
+      <p class="note">As DCS graded it. Carrier traps carry the wire and deviations.</p>
+      <div class="tw"><table id="traps" class="grid"></table></div>
+    </section>
+  </div>
+
+  <section class="panel" id="p-loadout">
+    <div class="phead"><h2>expenditure by pilot and airframe</h2></div>
+    <div class="tw"><table id="loadout" class="grid"></table></div>
   </section>
 
-  <section>
-    <h2>Sorties</h2>
-    <div class="scroll"><table id="activity"></table></div>
+  <section class="panel" id="p-log">
+    <div class="phead">
+      <h2>event log</h2>
+      <div class="chips" id="log-filter" role="group" aria-label="Filter the event log">
+        <button type="button" data-ev="all" class="on">all</button>
+        <button type="button" data-ev="kill">kills</button>
+        <button type="button" data-ev="hit">hits</button>
+        <button type="button" data-ev="shot">shots</button>
+        <button type="button" data-ev="losses">losses</button>
+        <button type="button" data-ev="sortie">sorties</button>
+      </div>
+      <div class="chips" id="log-side" role="group" aria-label="Filter by coalition">
+        <button type="button" data-side="all" class="on">both</button>
+        <button type="button" data-side="blue" class="side-blue">blue</button>
+        <button type="button" data-side="red" class="side-red">red</button>
+      </div>
+    </div>
+    <div class="tw"><table id="log" class="grid"></table></div>
   </section>
 
-  <section>
-    <h2>Landing grades</h2>
-    <div class="scroll"><table id="landings"></table></div>
-  </section>
-
-  <section>
-    <h2>Recent events</h2>
-    <div class="scroll"><table id="events"></table></div>
-  </section>
 </main>
 
-<footer>
-  <span id="footer-note"></span>
-</footer>
+<footer id="foot"></footer>
 
 <script src="app.js"></script>
 </body>

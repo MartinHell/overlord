@@ -1,15 +1,112 @@
-// Overlord dashboard.
+// Overlord debrief.
 //
-// Deliberately dependency-free and served as static files. It talks to the
-// GraphQL API over HTTP and holds no server-side state, so moving it out of
-// overlord later means serving this directory from somewhere else and pointing
-// API_URL at the API. Nothing here assumes it is same-origin except the default.
+// Dependency-free static files talking to the GraphQL API over HTTP. No
+// server-side state and nothing that assumes same-origin beyond the default, so
+// moving this out of overlord means serving the directory elsewhere and setting
+// window.OVERLORD_API_URL.
+
 const API_URL =
   (typeof window !== "undefined" && window.OVERLORD_API_URL) || "/query";
 
 const REFRESH_MS = 15000;
+const LOG_ROWS = 200;
 
 const el = (id) => document.getElementById(id);
+
+// Event types grouped the way a debrief reads them, rather than the way they are
+// stored.
+const GROUPS = {
+  kill: ["kill"],
+  hit: ["hit"],
+  shot: ["shot"],
+  losses: ["crash", "dead", "unit_lost", "pilot_dead", "ejection"],
+  sortie: [
+    "takeoff", "runway_takeoff", "land", "runway_touch",
+    "engine_startup", "engine_shutdown",
+    "player_enter_unit", "player_leave_unit", "player_change_slot",
+  ],
+};
+
+const EV_CLASS = {
+  kill: "ev-kill", hit: "ev-hit", shot: "ev-shot",
+  crash: "ev-loss", dead: "ev-loss", unit_lost: "ev-loss",
+  pilot_dead: "ev-loss", ejection: "ev-loss",
+};
+
+// --- state -----------------------------------------------------------------
+
+const state = {
+  data: null,
+  log: null,
+  query: "",
+  weaponClass: "all",
+  logGroup: "all",
+  logSide: "all",
+  sort: {
+    weapons: { key: "shots", dir: -1 },
+    pilots: { key: "takeoffs", dir: -1 },
+    loadout: { key: "shots", dir: -1 },
+    traps: { key: "missionTime", dir: -1 },
+    log: { key: "id", dir: -1 },
+  },
+};
+
+// --- api -------------------------------------------------------------------
+
+const QUERY = `{
+  killsByCoalition { coalition kills teamkills }
+  weaponEffectiveness { weaponType shots hits kills hitsPerShot killsPerShot }
+  shotsByPlayers { playerID playerName units { unitType weapons { weaponType count } } }
+  playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
+  landingGrades(first: 40) { playerName unitType place grade missionTime }
+}`;
+
+// The log is filtered by the database, not in the browser. Filtering 200
+// client-side rows does not work: hits outnumber kills by roughly ten to one, so
+// "kills only" came back with two rows while hundreds sat in the table.
+//
+// The API takes one event type per query, so a grouped filter such as losses
+// asks for each of its types and merges the results. That is a handful of small
+// queries per click, which is cheaper than fetching everything and discarding
+// most of it.
+function logQuery(eventType) {
+  const args = [`first: ${LOG_ROWS}`];
+  if (eventType) args.push(`eventType: "${eventType}"`);
+  if (state.logSide !== "all") args.push(`coalition: "${state.logSide}"`);
+
+  return `{ events(${args.join(", ")}) {
+    edges { node {
+      id event missionTime coalition targetCoalition
+      player { playerName }
+      initiator { type }
+      initiatorName initiatorCallsign initiatorGroup
+      weapon { type }
+      place
+      target { kind unit { type } }
+      targetName
+    } }
+  } }`;
+}
+
+// Fetches the log for whatever filter is active and returns it as one
+// connection, newest first.
+async function fetchLog() {
+  const group = GROUPS[state.logGroup];
+
+  if (!group) {
+    const d = await gql(logQuery(null));
+    return d.events;
+  }
+
+  const parts = await Promise.all(group.map((t) => gql(logQuery(t))));
+
+  const edges = parts
+    .flatMap((d) => d.events?.edges || [])
+    .sort((a, b) => Number(b.node.id) - Number(a.node.id))
+    .slice(0, LOG_ROWS);
+
+  return { edges };
+}
 
 async function gql(query) {
   const res = await fetch(API_URL, {
@@ -17,53 +114,14 @@ async function gql(query) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
   });
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
   const body = await res.json();
-  if (body.errors) {
-    throw new Error(body.errors.map((e) => e.message).join("; "));
-  }
-
+  if (body.errors) throw new Error(body.errors.map((e) => e.message).join("; "));
   return body.data;
 }
 
-const QUERY = `{
-  killsByCoalition { coalition kills teamkills }
-  weaponEffectiveness { weaponType shots hits kills hitsPerShot killsPerShot }
-  shotsByPlayers { playerID playerName units { unitType weapons { weaponType count } } }
-  playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
-  landingGrades(first: 15) { playerName unitType place grade missionTime }
-  events(first: 25) {
-    edges { node {
-      id event missionTime coalition targetCoalition
-      player { playerName }
-      initiator { type }
-      weapon { type }
-      target { kind unit { type } }
-    } }
-  }
-}`;
-
-// --- rendering helpers -----------------------------------------------------
-
-function table(node, columns, rows, renderRow) {
-  if (!rows || rows.length === 0) {
-    node.innerHTML = `<tbody><tr><td class="empty">Nothing recorded yet.</td></tr></tbody>`;
-    return;
-  }
-
-  const head = columns
-    .map((c) => `<th class="${c.num ? "num" : ""}">${esc(c.label)}</th>`)
-    .join("");
-
-  node.innerHTML =
-    `<thead><tr>${head}</tr></thead><tbody>` +
-    rows.map(renderRow).join("") +
-    `</tbody>`;
-}
+// --- helpers ---------------------------------------------------------------
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({
@@ -71,218 +129,393 @@ function esc(v) {
   }[c]));
 }
 
-// Ratios, not percentages: see the WeaponEffectiveness comment in models. A
-// value above 1 means one launch damaged several things.
+function clock(seconds) {
+  if (!seconds) return "--:--:--";
+  const s = Math.floor(seconds);
+  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+}
+
 function ratio(v) {
   return (v ?? 0).toFixed(2);
 }
 
-// Mission time is seconds on the DCS clock, not a wall-clock timestamp.
-function missionClock(seconds) {
-  if (!seconds) return "—";
-  const s = Math.floor(seconds);
-  const h = String(Math.floor(s / 3600)).padStart(2, "0");
-  const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
-  const sec = String(s % 60).padStart(2, "0");
-  return `${h}:${m}:${sec}`;
+function num(v) {
+  return v ? String(v) : `<span class="zero">0</span>`;
 }
 
-function side(coalition) {
-  const c = coalition || "unknown";
-  return `<span class="tag ${c === "blue" || c === "red" ? c : ""}">${esc(c)}</span>`;
+function matches(haystack) {
+  if (!state.query) return true;
+  return haystack.join(" ").toLowerCase().includes(state.query);
+}
+
+// Guns report hits with no shot events; airframes appear as weapons when DCS
+// names the aircraft for a collision.
+function storeClass(row) {
+  if (row.weaponType.startsWith("weapons.shells.")) return "gun";
+  if (row.shots > 0) return "ordnance";
+  return "collision";
+}
+
+function shortStore(name) {
+  return name.replace(/^weapons\.shells\./, "");
+}
+
+// --- sortable tables -------------------------------------------------------
+
+function sortRows(rows, table) {
+  const { key, dir } = state.sort[table];
+  return [...rows].sort((a, b) => {
+    const x = a[key], y = b[key];
+    if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
+    return String(x ?? "").localeCompare(String(y ?? "")) * dir;
+  });
+}
+
+function render(table, columns, rows, renderRow) {
+  const node = el(table);
+
+  if (!rows.length) {
+    node.innerHTML = `<tbody><tr><td class="none">Nothing matches.</td></tr></tbody>`;
+    return;
+  }
+
+  const active = state.sort[table];
+  const head = columns
+    .map((c) => {
+      if (!c.key) return `<th${c.num ? ' class="num"' : ""}>${esc(c.label)}</th>`;
+      const on = active.key === c.key;
+      const car = on ? `<span class="car">${active.dir < 0 ? "▼" : "▲"}</span>` : "";
+      return `<th data-sort="${c.key}"${
+        on ? ` aria-sort="${active.dir < 0 ? "descending" : "ascending"}"` : ""
+      }${c.num ? ' class="num"' : ""}>${esc(c.label)} ${car}</th>`;
+    })
+    .join("");
+
+  node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${rows.map(renderRow).join("")}</tbody>`;
+
+  node.querySelectorAll("th[data-sort]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      const s = state.sort[table];
+      s.dir = s.key === key ? -s.dir : -1;
+      s.key = key;
+      draw();
+    });
+  });
 }
 
 // --- sections --------------------------------------------------------------
 
-function renderCoalitions(rows) {
+function drawCoalition(rows) {
   const order = { blue: 0, red: 1, neutral: 2, unknown: 3 };
-  const sorted = [...(rows || [])].sort(
-    (a, b) => (order[a.coalition] ?? 9) - (order[b.coalition] ?? 9)
-  );
+  const sorted = [...rows].sort((a, b) => (order[a.coalition] ?? 9) - (order[b.coalition] ?? 9));
+  const max = Math.max(1, ...sorted.map((r) => r.kills));
 
-  el("coalitions").innerHTML = sorted
+  el("coalition").innerHTML = sorted
     .map(
-      (c) => `<div class="card ${esc(c.coalition)}">
-        <div class="label">${esc(c.coalition)}</div>
-        <div class="value">${c.kills}</div>
-        <div class="detail">kills${
-          c.teamkills > 0 ? ` · ${c.teamkills} teamkill${c.teamkills === 1 ? "" : "s"}` : ""
-        }</div>
+      (c) => `<div class="side" data-side="${esc(c.coalition)}">
+        <span class="side-name">${esc(c.coalition)}</span>
+        <span class="meter"><span style="width:${(c.kills / max) * 100}%"></span></span>
+        <span class="side-num"><b>${c.kills}</b> <i>splash</i>${
+          c.teamkills ? ` <span class="tk">· ${c.teamkills} blue-on-blue</span>` : ""
+        }</span>
       </div>`
     )
     .join("");
 }
 
-function renderWeapons(rows) {
-  // Rows where everything is zero carry no information: they exist because the
-  // weapon appeared on an event whose only hits and kills were against scenery,
-  // which the aggregate excludes.
-  const useful = (rows || []).filter((r) => r.shots || r.hits || r.kills);
-  const sorted = useful.sort((a, b) => b.shots - a.shots || b.hits - a.hits);
-  const maxShots = Math.max(1, ...sorted.map((r) => r.shots));
+function drawWeapons(rows) {
+  const filtered = rows
+    .filter((r) => r.shots || r.hits || r.kills)
+    .filter((r) => state.weaponClass === "all" || storeClass(r) === state.weaponClass)
+    .filter((r) => matches([r.weaponType]));
 
-  table(
-    el("weapons"),
+  const max = Math.max(1, ...filtered.map((r) => r.shots));
+
+  render(
+    "weapons",
     [
-      { label: "Weapon" },
-      { label: "Shots", num: true },
-      { label: "Hits", num: true },
-      { label: "Kills", num: true },
-      { label: "Hits / shot", num: true },
-      { label: "Kills / shot", num: true },
+      { label: "store", key: "weaponType" },
+      { label: "shots", key: "shots", num: true },
+      { label: "hits", key: "hits", num: true },
+      { label: "splash", key: "kills", num: true },
+      { label: "hits/shot", key: "hitsPerShot", num: true },
+      { label: "kills/shot", key: "killsPerShot", num: true },
     ],
-    sorted,
+    sortRows(filtered, "weapons"),
     (r) => `<tr>
-      <td>${esc(r.weaponType)}</td>
-      <td class="num"><span class="bar" style="width:${
-        (r.shots / maxShots) * 60
-      }px"></span>${r.shots}</td>
-      <td class="num">${r.hits}</td>
-      <td class="num">${r.kills}</td>
-      <td class="num">${r.shots ? ratio(r.hitsPerShot) : "—"}</td>
-      <td class="num">${r.shots ? ratio(r.killsPerShot) : "—"}</td>
+      <td class="name">${esc(shortStore(r.weaponType))}</td>
+      <td class="num">${
+        r.shots ? `<span class="bar" style="width:${(r.shots / max) * 44}px"></span>${r.shots}` : num(0)
+      }</td>
+      <td class="num">${num(r.hits)}</td>
+      <td class="num">${num(r.kills)}</td>
+      <td class="num">${r.shots ? ratio(r.hitsPerShot) : `<span class="zero">—</span>`}</td>
+      <td class="num">${r.shots ? ratio(r.killsPerShot) : `<span class="zero">—</span>`}</td>
     </tr>`
   );
 }
 
-function renderShots(players) {
+function drawPilots(rows) {
+  const filtered = rows
+    .filter((r) => r.takeoffs || r.landings || r.crashes || r.ejections || r.deaths)
+    .filter((r) => matches([r.playerName]));
+
+  render(
+    "pilots",
+    [
+      { label: "pilot", key: "playerName" },
+      { label: "t/o", key: "takeoffs", num: true },
+      { label: "ldg", key: "landings", num: true },
+      { label: "crash", key: "crashes", num: true },
+      { label: "ejct", key: "ejections", num: true },
+      { label: "kia", key: "deaths", num: true },
+    ],
+    sortRows(filtered, "pilots"),
+    (r) => `<tr>
+      <td class="name">${esc(r.playerName)}</td>
+      <td class="num">${num(r.takeoffs)}</td>
+      <td class="num">${num(r.landings)}</td>
+      <td class="num">${num(r.crashes)}</td>
+      <td class="num">${num(r.ejections)}</td>
+      <td class="num">${num(r.deaths)}</td>
+    </tr>`
+  );
+}
+
+function drawTraps(rows) {
+  const filtered = rows.filter((r) => matches([r.playerName, r.unitType, r.place, r.grade]));
+
+  render(
+    "traps",
+    [
+      { label: "time", key: "missionTime", num: true },
+      { label: "pilot", key: "playerName" },
+      { label: "airframe", key: "unitType" },
+      { label: "field", key: "place" },
+      { label: "grade", key: "grade" },
+    ],
+    sortRows(filtered, "traps"),
+    (r) => `<tr>
+      <td class="num">${clock(r.missionTime)}</td>
+      <td class="name">${esc(r.playerName || "—")}</td>
+      <td>${esc(r.unitType || "—")}</td>
+      <td>${esc(r.place || "—")}</td>
+      <td class="grade">${esc(r.grade || "—")}</td>
+    </tr>`
+  );
+}
+
+// Flattened so it can be sorted and filtered as one table rather than a tree.
+function drawLoadout(players) {
   const rows = [];
-  for (const p of players || []) {
-    const total = (p.units || []).reduce(
-      (sum, u) => sum + u.weapons.reduce((s, w) => s + w.count, 0),
-      0
-    );
-    rows.push({ kind: "player", name: p.playerName, total });
+  for (const p of players) {
     for (const u of p.units || []) {
       for (const w of u.weapons || []) {
-        rows.push({ kind: "weapon", unit: u.unitType, weapon: w.weaponType, count: w.count });
+        rows.push({
+          playerName: p.playerName,
+          unitType: u.unitType,
+          weaponType: w.weaponType,
+          shots: w.count,
+        });
       }
     }
   }
 
-  table(
-    el("shots"),
-    [{ label: "Player / airframe / weapon" }, { label: "Shots", num: true }],
-    rows,
-    (r) =>
-      r.kind === "player"
-        ? `<tr><td><strong>${esc(r.name)}</strong></td><td class="num"><strong>${r.total}</strong></td></tr>`
-        : `<tr><td class="sub">${esc(r.unit)} · ${esc(r.weapon)}</td><td class="num">${r.count}</td></tr>`
-  );
-}
+  const filtered = rows.filter((r) => matches([r.playerName, r.unitType, r.weaponType]));
+  const max = Math.max(1, ...filtered.map((r) => r.shots));
 
-function renderActivity(rows) {
-  const sorted = [...(rows || [])].sort(
-    (a, b) => b.takeoffs - a.takeoffs || b.landings - a.landings
-  );
-
-  table(
-    el("activity"),
+  render(
+    "loadout",
     [
-      { label: "Player" },
-      { label: "Takeoffs", num: true },
-      { label: "Landings", num: true },
-      { label: "Crashes", num: true },
-      { label: "Ejections", num: true },
-      { label: "Deaths", num: true },
+      { label: "pilot", key: "playerName" },
+      { label: "airframe", key: "unitType" },
+      { label: "store", key: "weaponType" },
+      { label: "shots", key: "shots", num: true },
     ],
-    sorted,
+    sortRows(filtered, "loadout"),
     (r) => `<tr>
-      <td>${esc(r.playerName)}</td>
-      <td class="num">${r.takeoffs}</td>
-      <td class="num">${r.landings}</td>
-      <td class="num">${r.crashes}</td>
-      <td class="num">${r.ejections}</td>
-      <td class="num">${r.deaths}</td>
+      <td class="name">${esc(r.playerName)}</td>
+      <td>${esc(r.unitType)}</td>
+      <td>${esc(shortStore(r.weaponType))}</td>
+      <td class="num"><span class="bar" style="width:${(r.shots / max) * 44}px"></span>${r.shots}</td>
     </tr>`
   );
 }
 
-function renderLandings(rows) {
-  table(
-    el("landings"),
-    [{ label: "Player" }, { label: "Airframe" }, { label: "Place" }, { label: "Grade" }, { label: "Mission time", num: true }],
-    rows,
-    (r) => `<tr>
-      <td>${esc(r.playerName || "—")}</td>
-      <td>${esc(r.unitType || "—")}</td>
-      <td>${esc(r.place || "—")}</td>
-      <td>${esc(r.grade || "—")}</td>
-      <td class="num">${missionClock(r.missionTime)}</td>
-    </tr>`
-  );
-}
+function drawLog(connection) {
+  const all = (connection?.edges || []).map((e) => ({ ...e.node, id: Number(e.node.id) }));
 
-function renderEvents(connection) {
-  const rows = (connection?.edges || []).map((e) => e.node);
+  // Event type and coalition were applied by the query. Only the free-text
+  // filter is left to do here.
+  const filtered = all
+    .filter((n) =>
+      matches([
+        n.event, n.player?.playerName, n.initiator?.type, n.initiatorName,
+        n.initiatorCallsign, n.initiatorGroup, n.weapon?.type,
+        n.target?.unit?.type, n.targetName, n.place,
+      ])
+    )
+    .map((n) => ({
+      ...n,
+      initiatorType: n.initiator?.type || "",
+      weaponType: n.weapon?.type || "",
+      targetType: n.target?.unit?.type || n.targetName || "",
+    }));
 
-  table(
-    el("events"),
+  render(
+    "log",
     [
-      { label: "Time", num: true },
-      { label: "Event" },
-      { label: "Side" },
-      { label: "Player" },
-      { label: "Airframe" },
-      { label: "Weapon" },
-      { label: "Target" },
+      { label: "time", key: "missionTime", num: true },
+      { label: "event", key: "event" },
+      { label: "actor", key: "initiatorCallsign" },
+      { label: "airframe", key: "initiatorType" },
+      { label: "store", key: "weaponType" },
+      { label: "target", key: "targetType" },
     ],
-    rows,
+    sortRows(filtered, "log"),
     (n) => {
-      const target = n.target?.unit?.type
-        ? `${esc(n.target.unit.type)}${
-            n.target.kind && n.target.kind !== "unit" ? ` <span class="tag">${esc(n.target.kind)}</span>` : ""
-          }`
-        : "—";
+      const side =
+        n.coalition === "blue" || n.coalition === "red"
+          ? `<span class="flag flag-${n.coalition}"></span>`
+          : `<span class="flag"></span>`;
+
+      // Callsign is what a pilot is actually called on the radio; fall back
+      // through the unit name to the player.
+      const actor = n.initiatorCallsign || n.initiatorName || n.player?.playerName || "—";
+
+      const target = n.targetType
+        ? esc(n.targetType) +
+          (n.target?.kind && n.target.kind !== "unit"
+            ? ` <span class="zero">${esc(n.target.kind)}</span>`
+            : "")
+        : `<span class="zero">—</span>`;
 
       return `<tr>
-        <td class="num">${missionClock(n.missionTime)}</td>
-        <td>${esc(n.event)}</td>
-        <td>${side(n.coalition)}</td>
-        <td>${esc(n.player?.playerName || "—")}</td>
-        <td>${esc(n.initiator?.type || "—")}</td>
-        <td>${esc(n.weapon?.type || "—")}</td>
-        <td>${target}</td>
+        <td class="num">${clock(n.missionTime)}</td>
+        <td><span class="ev ${EV_CLASS[n.event] || "ev-sortie"}">${esc(n.event)}</span></td>
+        <td class="name">${side}${esc(actor)}</td>
+        <td>${esc(n.initiatorType || "—")}</td>
+        <td>${n.weaponType ? esc(shortStore(n.weaponType)) : `<span class="zero">—</span>`}</td>
+        <td>${target}${n.place ? ` <span class="zero">${esc(n.place)}</span>` : ""}</td>
       </tr>`;
     }
   );
 }
 
-// --- refresh loop ----------------------------------------------------------
+// --- draw / refresh --------------------------------------------------------
 
-let timer = null;
+function draw() {
+  const d = state.data;
+  if (!d) return;
+
+  drawCoalition(d.killsByCoalition || []);
+  drawWeapons(d.weaponEffectiveness || []);
+  drawPilots(d.playerActivity || []);
+  drawTraps(d.landingGrades || []);
+  drawLoadout(d.shotsByPlayers || []);
+  drawLog(state.log);
+
+  const nodes = (state.log?.edges || []).map((e) => e.node);
+  const latest = Math.max(0, ...nodes.map((n) => n.missionTime || 0));
+  const sorties = (d.playerActivity || []).reduce((s, p) => s + p.takeoffs, 0);
+  const kills = (d.killsByCoalition || []).reduce((s, c) => s + c.kills, 0);
+
+  el("ro-clock").textContent = clock(latest);
+  el("ro-events").textContent = nodes.length >= LOG_ROWS ? `${LOG_ROWS}+` : String(nodes.length);
+  el("ro-sorties").textContent = String(sorties);
+  el("ro-kills").textContent = String(kills);
+}
 
 async function refresh() {
-  const status = el("status");
-
+  const link = el("link");
   try {
-    const data = await gql(QUERY);
-
-    renderCoalitions(data.killsByCoalition);
-    renderWeapons(data.weaponEffectiveness);
-    renderShots(data.shotsByPlayers);
-    renderActivity(data.playerActivity);
-    renderLandings(data.landingGrades);
-    renderEvents(data.events);
-
-    status.textContent = `updated ${new Date().toLocaleTimeString()}`;
-    status.className = "status ok";
-    el("footer-note").textContent = `${API_URL} · refreshes every ${REFRESH_MS / 1000}s`;
+    const [summary, log] = await Promise.all([gql(QUERY), fetchLog()]);
+    state.data = summary;
+    state.log = log;
+    draw();
+    link.textContent = `link ${new Date().toLocaleTimeString([], { hour12: false })}`;
+    link.className = "link up";
+    el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refresh ${REFRESH_MS / 1000}s`;
   } catch (err) {
-    status.textContent = `error: ${err.message}`;
-    status.className = "status err";
+    link.textContent = "no link";
+    link.className = "link down";
+    el("foot").textContent = `${err.message} — check that overlord is running and reachable at ${API_URL}`;
   }
 }
 
-function scheduleRefresh() {
+async function refreshLog() {
+  try {
+    state.log = await fetchLog();
+    draw();
+  } catch (err) {
+    el("link").textContent = "no link";
+    el("link").className = "link down";
+    el("foot").textContent = `${err.message} — check that overlord is reachable at ${API_URL}`;
+  }
+}
+
+// --- wiring ----------------------------------------------------------------
+
+let timer = null;
+function schedule() {
   clearInterval(timer);
-  if (el("autorefresh").checked) {
-    timer = setInterval(refresh, REFRESH_MS);
-  }
+  if (el("live").checked) timer = setInterval(refresh, REFRESH_MS);
 }
 
-el("refresh").addEventListener("click", refresh);
-el("autorefresh").addEventListener("change", scheduleRefresh);
+function chips(container, attr, onPick) {
+  el(container).addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    el(container).querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === btn));
+    onPick(btn.dataset[attr]);
+    draw();
+  });
+}
+
+chips("weapon-class", "class", (v) => (state.weaponClass = v));
+
+// These two change what the query asks for, so they refetch rather than redraw.
+chips("log-filter", "ev", (v) => {
+  state.logGroup = v;
+  refreshLog();
+});
+chips("log-side", "side", (v) => {
+  state.logSide = v;
+  refreshLog();
+});
+
+el("q").addEventListener("input", (e) => {
+  state.query = e.target.value.trim().toLowerCase();
+  draw();
+});
+
+el("live").addEventListener("change", schedule);
+
+// Dark is the MFD, light is the kneeboard. Remembered per browser.
+const themeBtn = el("theme");
+
+function applyTheme(mode) {
+  if (mode) document.documentElement.setAttribute("data-theme", mode);
+  else document.documentElement.removeAttribute("data-theme");
+
+  const dark = mode
+    ? mode === "dark"
+    : !window.matchMedia("(prefers-color-scheme: light)").matches;
+
+  // The button names where you are going, not where you are.
+  themeBtn.textContent = dark ? "kneeboard" : "mfd";
+}
+
+applyTheme(localStorage.getItem("overlord-theme"));
+
+themeBtn.addEventListener("click", () => {
+  const next = themeBtn.textContent === "kneeboard" ? "light" : "dark";
+  localStorage.setItem("overlord-theme", next);
+  applyTheme(next);
+});
 
 refresh();
-scheduleRefresh();
+schedule();
