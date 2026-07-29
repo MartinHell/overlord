@@ -106,3 +106,14 @@ func resetSessions() {
 
 	sessions = map[uint32]models.Player{}
 }
+
+// peekSession returns a tracked player without removing them, for events that
+// reference a live session rather than ending one.
+func peekSession(id uint32) (models.Player, bool) {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+
+	player, ok := sessions[id]
+
+	return player, ok
+}

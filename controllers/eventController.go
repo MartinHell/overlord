@@ -158,44 +158,115 @@ func GetEvent(id string) *models.Event {
 func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error {
 	// Every event carries the mission clock, which is the only timestamp that
 	// survives an overlord restart or lines up with a track file.
-	missionTime := event.GetTime()
+	t := event.GetTime()
 
 	switch inner := event.GetEvent().(type) {
 	case *mission.StreamEventsResponse_Connect:
-		logs.Sugar.Debugf("Connect event: %v", inner.Connect)
 		return ConnectEvent(inner.Connect)
 
+	case *mission.StreamEventsResponse_Disconnect:
+		return DisconnectEvent(inner.Disconnect)
+
 	case *mission.StreamEventsResponse_Birth:
-		logs.Sugar.Debugf("Birth event: %v", inner.Birth)
 		return BirthEvent(inner.Birth)
 
 	case *mission.StreamEventsResponse_Shot:
-		logs.Sugar.Debugf("Shot event: %v", inner.Shot)
-		return ShotEvent(inner.Shot, missionTime)
+		return recordEvent(eventDetail{Type: "shot", MissionTime: t,
+			Initiator: inner.Shot.GetInitiator(), Weapon: inner.Shot.GetWeapon()})
 
 	case *mission.StreamEventsResponse_Hit:
-		logs.Sugar.Debugf("Hit event: %v", inner.Hit)
-		return HitEvent(inner.Hit, missionTime)
+		if isCollateralHit(inner.Hit) {
+			logs.Sugar.Debugf("Skipping collateral hit on %v", inner.Hit.GetTarget())
+			return nil
+		}
+		return recordEvent(eventDetail{Type: "hit", MissionTime: t,
+			Initiator: inner.Hit.GetInitiator(), Weapon: inner.Hit.GetWeapon(),
+			WeaponName: inner.Hit.WeaponName, Target: inner.Hit.GetTarget()})
 
 	case *mission.StreamEventsResponse_Kill:
-		logs.Sugar.Debugf("Kill event: %v", inner.Kill)
-		return KillEvent(inner.Kill, missionTime)
+		return recordEvent(eventDetail{Type: "kill", MissionTime: t,
+			Initiator: inner.Kill.GetInitiator(), Weapon: inner.Kill.GetWeapon(),
+			WeaponName: inner.Kill.WeaponName, Target: inner.Kill.GetTarget()})
 
 	case *mission.StreamEventsResponse_Crash:
-		logs.Sugar.Debugf("Crash event: %v", inner.Crash)
-		return initiatorEvent("crash", missionTime, inner.Crash.GetInitiator())
+		return recordEvent(eventDetail{Type: "crash", MissionTime: t, Initiator: inner.Crash.GetInitiator()})
 
 	case *mission.StreamEventsResponse_UnitLost:
-		logs.Sugar.Debugf("UnitLost event: %v", inner.UnitLost)
-		return initiatorEvent("unit_lost", missionTime, inner.UnitLost.GetInitiator())
-
-	case *mission.StreamEventsResponse_Disconnect:
-		logs.Sugar.Debugf("Disconnect event: %v", inner.Disconnect)
-		return DisconnectEvent(inner.Disconnect)
+		return recordEvent(eventDetail{Type: "unit_lost", MissionTime: t, Initiator: inner.UnitLost.GetInitiator()})
 
 	case *mission.StreamEventsResponse_PilotDead:
-		logs.Sugar.Debugf("PilotDead event: %v", inner.PilotDead)
-		return initiatorEvent("pilot_dead", missionTime, inner.PilotDead.GetInitiator())
+		return recordEvent(eventDetail{Type: "pilot_dead", MissionTime: t, Initiator: inner.PilotDead.GetInitiator()})
+
+	case *mission.StreamEventsResponse_Dead:
+		return recordEvent(eventDetail{Type: "dead", MissionTime: t, Initiator: inner.Dead.GetInitiator()})
+
+	case *mission.StreamEventsResponse_Ejection:
+		return recordEvent(eventDetail{Type: "ejection", MissionTime: t,
+			Initiator: inner.Ejection.GetInitiator(), Target: inner.Ejection.GetTarget()})
+
+	// Sortie lifecycle. These are what make a sortie, and therefore per-sortie
+	// stats, possible at all.
+	case *mission.StreamEventsResponse_Takeoff:
+		return recordEvent(eventDetail{Type: "takeoff", MissionTime: t,
+			Initiator: inner.Takeoff.GetInitiator(), Place: inner.Takeoff.GetPlace()})
+
+	case *mission.StreamEventsResponse_RunwayTakeoff:
+		return recordEvent(eventDetail{Type: "runway_takeoff", MissionTime: t,
+			Initiator: inner.RunwayTakeoff.GetInitiator(), Place: inner.RunwayTakeoff.GetPlace()})
+
+	case *mission.StreamEventsResponse_Land:
+		return recordEvent(eventDetail{Type: "land", MissionTime: t,
+			Initiator: inner.Land.GetInitiator(), Place: inner.Land.GetPlace()})
+
+	case *mission.StreamEventsResponse_RunwayTouch:
+		return recordEvent(eventDetail{Type: "runway_touch", MissionTime: t,
+			Initiator: inner.RunwayTouch.GetInitiator(), Place: inner.RunwayTouch.GetPlace()})
+
+	case *mission.StreamEventsResponse_EngineStartup:
+		return recordEvent(eventDetail{Type: "engine_startup", MissionTime: t,
+			Initiator: inner.EngineStartup.GetInitiator(), Place: inner.EngineStartup.GetPlace()})
+
+	case *mission.StreamEventsResponse_EngineShutdown:
+		return recordEvent(eventDetail{Type: "engine_shutdown", MissionTime: t,
+			Initiator: inner.EngineShutdown.GetInitiator(), Place: inner.EngineShutdown.GetPlace()})
+
+	// Slot occupancy. PlayerChangeSlot arrives first with the player identity;
+	// PlayerEnterUnit follows seconds later with the airframe.
+	case *mission.StreamEventsResponse_PlayerEnterUnit:
+		return recordEvent(eventDetail{Type: "player_enter_unit", MissionTime: t,
+			Initiator: inner.PlayerEnterUnit.GetInitiator()})
+
+	case *mission.StreamEventsResponse_PlayerLeaveUnit:
+		return recordEvent(eventDetail{Type: "player_leave_unit", MissionTime: t,
+			Initiator: inner.PlayerLeaveUnit.GetInitiator()})
+
+	case *mission.StreamEventsResponse_PlayerChangeSlot:
+		return PlayerChangeSlotEvent(inner.PlayerChangeSlot, t)
+
+	// The landing grade arrives as free text in Comment.
+	case *mission.StreamEventsResponse_LandingQualityMark:
+		return recordEvent(eventDetail{Type: "landing_quality_mark", MissionTime: t,
+			Initiator: inner.LandingQualityMark.GetInitiator(),
+			Place:     inner.LandingQualityMark.GetPlace(),
+			Comment:   inner.LandingQualityMark.GetComment()})
+
+	// Loadout: what was carried, against what was later expended.
+	case *mission.StreamEventsResponse_WeaponAdd:
+		name := inner.WeaponAdd.GetWeaponName()
+		return recordEvent(eventDetail{Type: "weapon_add", MissionTime: t,
+			Initiator: inner.WeaponAdd.GetInitiator(), WeaponName: &name})
+
+	case *mission.StreamEventsResponse_BaseCapture:
+		return recordEvent(eventDetail{Type: "base_capture", MissionTime: t,
+			Initiator: inner.BaseCapture.GetInitiator(), Place: inner.BaseCapture.GetPlace()})
+
+	// Mission boundaries carry no payload beyond the clock, but without them
+	// every event ever recorded is one undifferentiated pile.
+	case *mission.StreamEventsResponse_MissionStart:
+		return recordEvent(eventDetail{Type: "mission_start", MissionTime: t})
+
+	case *mission.StreamEventsResponse_MissionEnd:
+		return recordEvent(eventDetail{Type: "mission_end", MissionTime: t})
 
 	case *mission.StreamEventsResponse_SimulationFps:
 	default:
@@ -336,66 +407,114 @@ func resolvePlayer(u *common.Unit) models.Player {
 	return models.AIPlayerFor(models.CoalitionFromUnit(u))
 }
 
-// initiatorEvent stores an event that only identifies the unit it happened to:
-// crash, unit_lost and pilot_dead all have this shape.
-func initiatorEvent(eventType string, missionTime float64, initiator *common.Initiator) error {
-	from := buildInitiator(initiator)
-
-	if from.Unit.Type == "" {
-		logs.Sugar.Debugf("Skipping %s event: initiator could not be identified", eventType)
-		return nil
-	}
-
-	event := models.Event{
-		MissionTime:   missionTime,
-		Coalition:     from.Coalition,
-		InitiatorKind: from.Kind,
-	}
-
-	event.FromStreamEventsResponse(eventType, &from.Player, &from.Unit, nil, nil)
-
-	if err := event.CreateEvent(); err != nil {
-		logs.Sugar.Errorf("Failed to store %s event: %v", eventType, err)
-		return err
-	}
-
-	return nil
+// eventDetail is everything an event might carry. Using one struct keeps a
+// single record path for two dozen event types instead of a near-duplicate
+// function per type.
+type eventDetail struct {
+	Type        string
+	MissionTime float64
+	Initiator   *common.Initiator
+	Target      *common.Target
+	Weapon      *common.Weapon
+	WeaponName  *string
+	Place       *common.Airbase
+	Comment     string
+	SlotID      string
 }
 
-func ShotEvent(p *mission.StreamEventsResponse_ShotEvent, missionTime float64) error {
+// recordEvent resolves everything an event references and stores one row.
+func recordEvent(d eventDetail) error {
+	from := buildInitiator(d.Initiator)
+
+	// Some events name the weapon without describing it, notably when the
+	// "weapon" was an aircraft flown into the ground.
 	var weapon models.Weapon
-	weapon.Type = p.GetWeapon().GetType()
-
-	// Shots come from statics as well as units: a SAM launcher is a static, and
-	// resolving only the unit case dropped its initiator entirely.
-	from := buildInitiator(p.GetInitiator())
-
-	event := models.Event{
-		MissionTime:   missionTime,
-		Coalition:     from.Coalition,
-		InitiatorKind: from.Kind,
+	if d.Weapon != nil {
+		weapon.Type = d.Weapon.GetType()
+	} else if d.WeaponName != nil {
+		weapon.Type = *d.WeaponName
 	}
 
-	event.FromStreamEventsResponse("shot", &from.Player, &from.Unit, &weapon, nil)
+	target, targetCoalition, targetPos := buildTarget(d.Target)
+
+	event := models.Event{
+		MissionTime:       d.MissionTime,
+		Coalition:         from.Coalition,
+		InitiatorKind:     from.Kind,
+		InitiatorName:     from.Name,
+		InitiatorGroup:    from.Group,
+		InitiatorCallsign: from.Callsign,
+		InitiatorLat:      from.Position.Lat,
+		InitiatorLon:      from.Position.Lon,
+		InitiatorAlt:      from.Position.Alt,
+		TargetCoalition:   targetCoalition,
+		TargetName:        targetPos.Name,
+		TargetLat:         targetPos.Lat,
+		TargetLon:         targetPos.Lon,
+		TargetAlt:         targetPos.Alt,
+		Place:             d.Place.GetName(),
+		Comment:           d.Comment,
+		SlotID:            d.SlotID,
+	}
+
+	event.FromStreamEventsResponse(d.Type, &from.Player, &from.Unit, &weapon, &target)
+
+	// Mission boundaries legitimately carry nothing but the clock. Anything
+	// else with no usable content would just be a junk row.
+	if isEmptyEvent(d, from, weapon, target) {
+		logs.Sugar.Debugf("Skipping %s event: nothing identifiable in it", d.Type)
+		return nil
+	}
 
 	if err := event.CreateEvent(); err != nil {
-		logs.Sugar.Errorf("Failed to store shot event: %v", err)
+		logs.Sugar.Errorf("Failed to store %s event: %v", d.Type, err)
 		return err
 	}
 
 	return nil
 }
 
-// HitEvent records a weapon striking something. It shares its shape with a kill,
-// which is what makes accuracy and Pk computable: shots fired versus hits landed
-// versus kills achieved.
-func HitEvent(p *mission.StreamEventsResponse_HitEvent, missionTime float64) error {
-	if isCollateralHit(p) {
-		logs.Sugar.Debugf("Skipping collateral hit on %v", p.GetTarget())
-		return nil
+// isEmptyEvent reports whether an event would store nothing worth keeping.
+func isEmptyEvent(d eventDetail, from initiatorInfo, weapon models.Weapon, target models.Target) bool {
+	switch d.Type {
+	case "mission_start", "mission_end":
+		// These are markers; the timestamp is the whole point.
+		return false
 	}
 
-	return engagementEvent("hit", missionTime, p.GetInitiator(), p.GetWeapon(), p.WeaponName, p.GetTarget())
+	return from.Unit.Type == "" &&
+		weapon.Type == "" &&
+		target.Unit.Type == "" &&
+		target.Weapon.Type == "" &&
+		d.Place.GetName() == "" &&
+		d.Comment == "" &&
+		d.SlotID == ""
+}
+
+// PlayerChangeSlotEvent records a player taking a slot. It carries the player
+// id, coalition and slot but no unit; PlayerEnterUnit follows seconds later
+// with the airframe.
+func PlayerChangeSlotEvent(p *mission.StreamEventsResponse_PlayerChangeSlotEvent, missionTime float64) error {
+	player, known := peekSession(p.GetPlayerId())
+	if !known {
+		// Overlord may have started mid-mission and never seen the connect.
+		logs.Sugar.Debugf("Slot change for unknown session id %d", p.GetPlayerId())
+	}
+
+	event := models.Event{
+		MissionTime: missionTime,
+		Coalition:   models.CoalitionFromProto(p.GetCoalition()),
+		SlotID:      p.GetSlotId(),
+	}
+
+	event.FromStreamEventsResponse("player_change_slot", &player, &models.Unit{}, nil, nil)
+
+	if err := event.CreateEvent(); err != nil {
+		logs.Sugar.Errorf("Failed to store player_change_slot event: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 // isCollateralHit reports whether a hit is splash damage on a map object rather
@@ -418,50 +537,6 @@ func isCollateralHit(p *mission.StreamEventsResponse_HitEvent) bool {
 	return p.GetWeapon() == nil && p.GetWeaponName() == ""
 }
 
-func KillEvent(p *mission.StreamEventsResponse_KillEvent, missionTime float64) error {
-	return engagementEvent("kill", missionTime, p.GetInitiator(), p.GetWeapon(), p.WeaponName, p.GetTarget())
-}
-
-// engagementEvent stores an event describing one thing acting on another with a
-// weapon. Hit and kill events are identical in shape, so they share this path.
-func engagementEvent(
-	eventType string,
-	missionTime float64,
-	initiator *common.Initiator,
-	protoWeapon *common.Weapon,
-	weaponName *string,
-	protoTarget *common.Target,
-) error {
-	// Set Weapon. Some events name the weapon without describing it, notably
-	// when the "weapon" was an aircraft flown into the ground.
-	var weapon models.Weapon
-	if protoWeapon != nil {
-		weapon.Type = protoWeapon.GetType()
-	} else if weaponName != nil {
-		weapon.Type = *weaponName
-	}
-
-	from := buildInitiator(initiator)
-
-	target, targetCoalition := buildTarget(protoTarget)
-
-	event := models.Event{
-		MissionTime:     missionTime,
-		Coalition:       from.Coalition,
-		InitiatorKind:   from.Kind,
-		TargetCoalition: targetCoalition,
-	}
-
-	event.FromStreamEventsResponse(eventType, &from.Player, &from.Unit, &weapon, &target)
-
-	if err := event.CreateEvent(); err != nil {
-		logs.Sugar.Errorf("Failed to store %s event: %v", eventType, err)
-		return err
-	}
-
-	return nil
-}
-
 // initiatorInfo describes whatever caused an event. DCS models an initiator
 // with the same oneof as a target, so it can be a static SAM site, a weapon or
 // scenery, not just a unit.
@@ -470,6 +545,27 @@ type initiatorInfo struct {
 	Kind      string
 	Coalition string
 	Player    models.Player
+	// Identity of the specific unit, as opposed to its type. Unit rows are
+	// deduplicated by type, so this is the only place instance identity lives.
+	Name     string
+	Group    string
+	Callsign string
+	Position objectPosition
+}
+
+// objectPosition is where something was when an event fired, plus its name.
+type objectPosition struct {
+	Name string
+	Lat  float64
+	Lon  float64
+	Alt  float64
+}
+
+func positionOf(p *common.Position) objectPosition {
+	if p == nil {
+		return objectPosition{}
+	}
+	return objectPosition{Lat: p.GetLat(), Lon: p.GetLon(), Alt: p.GetAlt()}
 }
 
 // buildInitiator resolves an initiator of any kind. Only the unit case used to
@@ -493,12 +589,18 @@ func buildInitiator(initiator *common.Initiator) initiatorInfo {
 		info.Coalition = models.CoalitionFromUnit(u)
 		info.Player = resolvePlayer(u)
 		info.Unit.FromCommonUnit(u)
+		info.Name = u.GetName()
+		info.Callsign = u.GetCallsign()
+		info.Group = u.GetGroup().GetName()
+		info.Position = positionOf(u.GetPosition())
 
 	case initiator.GetStatic() != nil:
 		static := initiator.GetStatic()
 		info.Kind = models.ObjectKindStatic
 		info.Coalition = models.CoalitionFromProto(static.GetCoalition())
 		info.Unit.Type = static.GetType()
+		info.Name = static.GetName()
+		info.Position = positionOf(static.GetPosition())
 		info.Player = models.AIPlayerFor(info.Coalition)
 
 	case initiator.GetWeapon() != nil:
@@ -506,11 +608,13 @@ func buildInitiator(initiator *common.Initiator) initiatorInfo {
 		// detonating after its launcher has already been destroyed.
 		info.Kind = models.ObjectKindWeapon
 		info.Unit.Type = initiator.GetWeapon().GetType()
+		info.Position = positionOf(initiator.GetWeapon().GetPosition())
 		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
 
 	case initiator.GetScenery() != nil:
 		info.Kind = models.ObjectKindScenery
 		info.Unit.Type = initiator.GetScenery().GetType()
+		info.Position = positionOf(initiator.GetScenery().GetPosition())
 		info.Player = models.AIPlayerFor(models.CoalitionUnknown)
 
 	case initiator.GetAirbase() != nil:
@@ -518,6 +622,8 @@ func buildInitiator(initiator *common.Initiator) initiatorInfo {
 		info.Kind = models.ObjectKindAirbase
 		info.Coalition = models.CoalitionFromProto(airbase.GetCoalition())
 		info.Unit.Type = airbase.GetName()
+		info.Name = airbase.GetName()
+		info.Position = positionOf(airbase.GetPosition())
 		info.Player = models.AIPlayerFor(info.Coalition)
 
 	case initiator.GetCargo() != nil:
@@ -542,12 +648,13 @@ func buildInitiator(initiator *common.Initiator) initiatorInfo {
 // buildTarget converts whatever a target turned out to be into a Target row.
 // Every branch records something: previously anything that was not a unit was
 // discarded, which lost the target on the great majority of air-to-ground kills.
-func buildTarget(protoTarget *common.Target) (models.Target, string) {
+func buildTarget(protoTarget *common.Target) (models.Target, string, objectPosition) {
 	target := models.Target{Kind: models.ObjectKindUnknown}
 	coalition := models.CoalitionUnknown
+	var pos objectPosition
 
 	if protoTarget == nil {
-		return target, coalition
+		return target, coalition, pos
 	}
 
 	switch {
@@ -564,34 +671,42 @@ func buildTarget(protoTarget *common.Target) (models.Target, string) {
 		}
 
 		target.Unit.FromCommonUnit(tgt)
+		pos = positionOf(tgt.GetPosition())
+		pos.Name = tgt.GetName()
 
 	case protoTarget.GetWeapon() != nil:
 		// Shooting down a missile, for example.
 		target.Kind = models.ObjectKindWeapon
 		target.Weapon.FromCommonWeapon(protoTarget.GetWeapon())
+		pos = positionOf(protoTarget.GetWeapon().GetPosition())
 
 	case protoTarget.GetStatic() != nil:
 		static := protoTarget.GetStatic()
 		target.Kind = models.ObjectKindStatic
 		target.Unit.Type = static.GetType()
 		coalition = models.CoalitionFromProto(static.GetCoalition())
+		pos = positionOf(static.GetPosition())
+		pos.Name = static.GetName()
 
 	case protoTarget.GetScenery() != nil:
 		// Map objects: buildings, bridges. They belong to no coalition.
 		target.Kind = models.ObjectKindScenery
 		target.Unit.Type = protoTarget.GetScenery().GetType()
+		pos = positionOf(protoTarget.GetScenery().GetPosition())
 
 	case protoTarget.GetAirbase() != nil:
 		airbase := protoTarget.GetAirbase()
 		target.Kind = models.ObjectKindAirbase
 		target.Unit.Type = airbase.GetName()
 		coalition = models.CoalitionFromProto(airbase.GetCoalition())
+		pos = positionOf(airbase.GetPosition())
+		pos.Name = airbase.GetName()
 
 	default:
 		logs.Sugar.Debugf("Unrecognised target type: %v", protoTarget)
 	}
 
-	return target, coalition
+	return target, coalition, pos
 }
 
 func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {

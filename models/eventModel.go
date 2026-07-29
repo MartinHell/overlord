@@ -34,13 +34,38 @@ type Event struct {
 	// or scenery, not just a unit, and its type is stored in Initiator either
 	// way.
 	InitiatorKind string `gorm:"index"`
-	TargetID        *uint
-	Target          Target `gorm:"foreignKey:TargetID;references:TargetID"`
+	// Identity of the specific unit involved. Unit rows are deduplicated by
+	// type, deliberately, so without these there is no way to tell one of four
+	// F-16s from another, reconstruct a flight, or line an event up with a
+	// track file.
+	InitiatorName     string `gorm:"index"`
+	InitiatorGroup    string `gorm:"index"`
+	InitiatorCallsign string
+	// Where the initiator was. Only captured at the moment of the event; see
+	// the StreamUnits issue for continuous tracks.
+	InitiatorLat float64
+	InitiatorLon float64
+	InitiatorAlt float64
+	TargetID     *uint
+	Target       Target `gorm:"foreignKey:TargetID;references:TargetID"`
 	// TargetCoalition is stored on the event rather than on Target because
 	// Target rows are deduplicated across events.
 	TargetCoalition string `gorm:"index"`
-	WeaponID        *uint
-	Weapon          Weapon `gorm:"foreignKey:WeaponID;references:WeaponID"`
+	TargetName      string
+	// Target position, which together with the initiator's gives engagement
+	// geometry: range at launch, shot distance, and so on.
+	TargetLat float64
+	TargetLon float64
+	TargetAlt float64
+	WeaponID  *uint
+	Weapon    Weapon `gorm:"foreignKey:WeaponID;references:WeaponID"`
+	// Place is the airbase involved in takeoff, landing, engine and base
+	// capture events.
+	Place string `gorm:"index"`
+	// Comment carries the landing grade on landingQualityMark events.
+	Comment string
+	// SlotID identifies the slot on playerChangeSlot events.
+	SlotID string
 }
 
 // Graphql structs used for pagination of events
@@ -107,17 +132,31 @@ func (e *Event) CreateEvent() error {
 			return err
 		}
 
-		// Create the event
+		// Create the event. Built explicitly rather than reusing e so that the
+		// preloaded association structs are not written back as new rows.
 		event := Event{
-			PlayerID:        e.PlayerID,
-			Event:           e.Event,
-			MissionTime:     e.MissionTime,
-			Coalition:       e.Coalition,
-			InitiatorKind:   e.InitiatorKind,
-			InitiatorUnitID: e.InitiatorUnitID,
-			TargetID:        e.TargetID,
-			TargetCoalition: e.TargetCoalition,
-			WeaponID:        e.WeaponID,
+			PlayerID:          e.PlayerID,
+			Event:             e.Event,
+			MissionTime:       e.MissionTime,
+			Coalition:         e.Coalition,
+			InitiatorKind:     e.InitiatorKind,
+			InitiatorUnitID:   e.InitiatorUnitID,
+			InitiatorName:     e.InitiatorName,
+			InitiatorGroup:    e.InitiatorGroup,
+			InitiatorCallsign: e.InitiatorCallsign,
+			InitiatorLat:      e.InitiatorLat,
+			InitiatorLon:      e.InitiatorLon,
+			InitiatorAlt:      e.InitiatorAlt,
+			TargetID:          e.TargetID,
+			TargetCoalition:   e.TargetCoalition,
+			TargetName:        e.TargetName,
+			TargetLat:         e.TargetLat,
+			TargetLon:         e.TargetLon,
+			TargetAlt:         e.TargetAlt,
+			WeaponID:          e.WeaponID,
+			Place:             e.Place,
+			Comment:           e.Comment,
+			SlotID:            e.SlotID,
 		}
 
 		logs.Sugar.Debugf("Creating Event: %+v", event)
