@@ -42,11 +42,11 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
@@ -69,6 +69,16 @@ spec:
                   name: {{ include "overlord.fullname" . }}-secret
                   key: port
           {{- end }}
+            - name: DB_TYPE
+              value: {{ .Values.overlord.db_type | quote }}
+            - name: GRPC_SERVER_ADDRESS
+              value: {{ .Values.overlord.grpc_server_address | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.overlord.environment | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.overlord.log_level | quote }}
+            - name: LOG_ENCODING
+              value: {{ .Values.overlord.log_encoding | quote }}
           {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}

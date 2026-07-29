@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
@@ -35,23 +36,35 @@ var AIPlayer = Player{
 	UCID:       "0",
 }
 
+// GetPlayerFromDB resolves the player's UCID from the DCS player list and, if
+// they are already stored, fills in the rest of the record from the database.
+// A player who cannot be resolved is left as-is rather than treated as an error:
+// events routinely arrive after the player behind them has disconnected.
 func (p *Player) GetPlayerFromDB() error {
-	// Check if player is in DB
-	var playerCache PlayerCache
+	if err := p.GetPlayerUcidByName(); err != nil {
+		return err
+	}
 
-	playerCache.RefreshPlayersCache()
-	playerLookup := *playerCache.FindPlayerByName(*p.PlayerName)
+	if p.UCID == "" {
+		return nil
+	}
 
-	if playerLookup.GetUcid() != "" {
-		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(p)
-		if result.Error != nil && result.Error.Error() != "record not found" {
-			logs.Sugar.Errorf("Failed to find player: %v", result.Error)
-			return result.Error
-		}
+	name := p.PlayerName
 
-		if result.RowsAffected == 0 {
-			return nil
-		}
+	var stored Player
+	result := initializers.DB.Where(ucidQuery, p.UCID).First(&stored)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		logs.Sugar.Errorf("Failed to find player: %v", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return nil
+	}
+
+	*p = stored
+	if p.PlayerName == nil {
+		p.PlayerName = name
 	}
 
 	return nil
@@ -124,39 +137,59 @@ func (p *Player) UpdatePlayer(up *Player) error {
 	return nil
 }
 
-func (p *Player) CheckIfPlayerInDB() bool {
-	// Check if player is in DB
-	var playerCache PlayerCache
-	var player Player
-
-	playerCache.RefreshPlayersCache()
-	playerLookup := *playerCache.FindPlayerByName(*p.PlayerName)
-
-	if playerLookup.GetUcid() != "" {
-		result := initializers.DB.Where(ucidQuery, playerLookup.GetUcid()).First(&player)
-		if result.Error != nil && result.Error.Error() != "record not found" {
-			logs.Sugar.Errorf("Failed to find player: %v", result.Error)
-		}
-
-		if result.RowsAffected == 0 {
-			return false
+// EnsureInDB resolves the player's UCID and stores them if they are not known
+// yet. Players whose UCID cannot be resolved are skipped rather than inserted
+// with an empty UCID, which would collide on the unique index.
+func (p *Player) EnsureInDB() error {
+	if p.UCID == "" {
+		if err := p.GetPlayerUcidByName(); err != nil {
+			return err
 		}
 	}
 
-	return true
+	if p.UCID == "" {
+		logs.Sugar.Debugf("Skipping player %q: no UCID available", p.GetPlayerName())
+		return nil
+	}
 
+	var stored Player
+	result := initializers.DB.Where(ucidQuery, p.UCID).First(&stored)
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		logs.Sugar.Errorf("Failed to find player: %v", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected > 0 {
+		p.PlayerID = stored.PlayerID
+		return nil
+	}
+
+	return p.CreatePlayer()
 }
 
+// GetPlayerUcidByName fills in the player's UCID from the server's current
+// player list. A player who is not in that list leaves the UCID empty; callers
+// are expected to treat that as "not resolvable right now", not as an error.
 func (p *Player) GetPlayerUcidByName() error {
-	var playercache PlayerCache
-	err := playercache.RefreshPlayersCache()
-	if err != nil {
-		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
+	name := p.GetPlayerName()
+	if name == "" {
+		return nil
 	}
 
-	player := *playercache.FindPlayerByName(p.GetPlayerName())
+	var playercache PlayerCache
+	if err := playercache.RefreshPlayersCache(); err != nil {
+		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
+		return err
+	}
 
-	p.UCID = player.Ucid
+	player := playercache.FindPlayerByName(name)
+	if player == nil {
+		logs.Sugar.Debugf("Player %q is not in the DCS player list", name)
+		return nil
+	}
+
+	p.UCID = player.GetUcid()
+
 	return nil
 }
 
@@ -189,18 +222,6 @@ func (p *Player) GetIP() string {
 		return p.IP
 	}
 	return ""
-}
-
-func (p *Player) GetPlayerUcid() string {
-	var playercache PlayerCache
-	err := playercache.RefreshPlayersCache()
-	if err != nil {
-		logs.Sugar.Errorf("Failed to refresh player cache: %v", err)
-	}
-
-	player := *playercache.FindPlayerByName(p.GetPlayerName())
-
-	return player.Ucid
 }
 
 // Find Player in cache based on Name

@@ -39,9 +39,18 @@ securityContext: {}
   # runAsNonRoot: true
   # runAsUser: 1000
 
-# Database URL for the Overlord service
 overlord:
-  db_url: "host=127.0.0.1 user=overlord password=devpass123 dbname=overlord port=5432"
+  # Database driver: "postgres" or "sqlite".
+  db_type: postgres
+  # Database URL for the Overlord service. Override this — the default is a
+  # placeholder and is not a usable credential.
+  db_url: "host=127.0.0.1 user=overlord password=CHANGEME dbname=overlord port=5432"
+  # Address of the DCS-gRPC server exposed by your DCS installation.
+  grpc_server_address: "127.0.0.1:50051"
+  # Set to "production" to stop serving the GraphQL playground.
+  environment: production
+  log_level: info
+  log_encoding: json
 
 service:
   type: ClusterIP

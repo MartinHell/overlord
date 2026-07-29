@@ -24,17 +24,26 @@ func GraphQLHandler() {
 
 	srv := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{Resolvers: &graph.Resolver{}}))
 
-	http.Handle("/query", srv)
+	mux := http.NewServeMux()
+	mux.Handle("/query", srv)
+
+	// Health endpoint for container probes. It is deliberately separate from the
+	// playground, which is not served in production.
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 
 	if environment != "production" {
-		http.Handle("/", playground.Handler("GraphQL Playground", "/query"))
+		mux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
 	}
 
 	logs.Sugar.Infof("GraphQL server listening on port %s", port)
 	if environment != "production" {
 		logs.Sugar.Infof("GraphQL playground available at http://localhost:%s/", port)
 	}
-	err := http.ListenAndServe(":"+port, nil)
+	err := http.ListenAndServe(":"+port, mux)
 	if err != nil {
 		logs.Sugar.Fatal(err)
 	}

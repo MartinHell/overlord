@@ -12,12 +12,16 @@ import (
 	"github.com/MartinHell/overlord/models"
 )
 
+// defaultPageSize is used when a query omits the optional `first` argument.
+const defaultPageSize = 50
+
 func convertStringToUint(s string) uint {
-	// Convert string to uint
 	value, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		// Handle error if the string cannot be converted
-		panic(err)
+		// The only caller builds these strings from uint keys, so a parse
+		// failure means a bug rather than bad user input. Zero is a safe
+		// sentinel; panicking here would take down the request.
+		return 0
 	}
 	return uint(value)
 }
@@ -72,6 +76,13 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		events = controllers.GetEvents()
 	}
 
+	if len(events) == 0 {
+		return &models.EventConnection{
+			PageInfo: &models.PageInfo{},
+			Edges:    []*models.EventEdge{},
+		}, nil
+	}
+
 	start := 0
 	if after != nil {
 		for i, event := range events {
@@ -82,8 +93,15 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		}
 	}
 
+	// first is optional in the schema, so fall back to a page size instead of
+	// dereferencing a nil pointer.
+	pageSize := defaultPageSize
+	if first != nil && *first > 0 {
+		pageSize = *first
+	}
+
 	// Get the slice of events
-	end := start + *first
+	end := start + pageSize
 	if end > len(events) {
 		end = len(events)
 	}
@@ -150,6 +168,10 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, pID string) (*models.
 	result, err := GeneratePlayerShotBreakdowns(events)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(result) == 0 {
+		return nil, nil
 	}
 
 	return result[0], nil
@@ -299,6 +321,9 @@ func (r *weaponShotBreakdownResolver) Count(ctx context.Context, obj *models.Wea
 type unitWeaponBreakdownResolver struct{ *Resolver }
 
 func (r *unitWeaponBreakdownResolver) Count(ctx context.Context, obj *models.UnitWeaponBreakdown) (int, error) {
+	if len(obj.Weapons) == 0 {
+		return 0, nil
+	}
 	return obj.Weapons[0].Count, nil
 }
 
@@ -307,6 +332,9 @@ func (r *unitWeaponBreakdownResolver) UnitType(ctx context.Context, obj *models.
 }
 
 func (r *unitWeaponBreakdownResolver) WeaponType(ctx context.Context, obj *models.UnitWeaponBreakdown) (string, error) {
+	if len(obj.Weapons) == 0 {
+		return "", nil
+	}
 	return obj.Weapons[0].WeaponType, nil
 }
 
@@ -317,7 +345,7 @@ func generateBreakdownUnits(events []*models.Event) map[string]map[string]int {
 
 	for _, event := range events {
 		// Check if unit type is present in the event
-		if &event.Initiator == nil || event.Initiator.Type == "" {
+		if event.Initiator.Type == "" {
 			continue // Skip events without unit type
 		}
 
@@ -361,7 +389,7 @@ func generateBreakdown(events []*models.Event) (map[string]map[string]map[string
 
 	for _, event := range events {
 		// Check if player is present in the event
-		if event.Player.PlayerName == nil {
+		if event.Player.PlayerName == nil || event.PlayerID == nil {
 			continue // Skip events without player information
 		}
 
@@ -369,7 +397,7 @@ func generateBreakdown(events []*models.Event) (map[string]map[string]map[string
 		playerNames[playerID] = *event.Player.PlayerName // Store player name for each player ID
 
 		// Check if unit type and weapon type are present in the event
-		if &event.Initiator == nil || event.Initiator.Type == "" || &event.Weapon == nil || event.Weapon.Type == "" {
+		if event.Initiator.Type == "" || event.Weapon.Type == "" {
 			continue // Skip events without unit type or weapon type
 		}
 

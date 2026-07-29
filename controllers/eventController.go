@@ -1,7 +1,12 @@
 package controllers
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
+	"math"
+	"runtime/debug"
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
@@ -100,35 +105,113 @@ func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error
 	return nil
 }
 
-func StreamEvents() {
+const (
+	// streamBaseDelay is the delay before the first reconnect attempt.
+	streamBaseDelay = 2 * time.Second
+	// streamMaxDelay caps the exponential backoff between reconnect attempts.
+	streamMaxDelay = 60 * time.Second
+	// streamStableAfter is how long a stream must stay up before it counts as
+	// healthy and the backoff is reset. Without this a stream that dies
+	// immediately after every reconnect would keep resetting to the base delay.
+	streamStableAfter = 30 * time.Second
+)
+
+// StreamEvents consumes DCS mission events until ctx is cancelled, reconnecting
+// whenever the stream drops (mission restart, DCS shutdown, network blip).
+func StreamEvents(ctx context.Context) {
 	var eventHandler EventHandler = &DCSEventHandler{}
 
+	attempt := 0
+
 	for {
-		err := handleStreamEvents(eventHandler)
-		if err == io.EOF {
-			logs.Sugar.Errorf("Server closed events stream, retrying...")
-		} else if err != nil {
-			logs.Sugar.Errorf("Failed to receive event: %v, retrying...", err)
+		if ctx.Err() != nil {
+			return
 		}
 
-		// Wait before retrying to avoid tight loop
-		time.Sleep(5 * time.Second)
+		start := time.Now()
+		err := runEventStream(ctx, eventHandler)
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		if time.Since(start) >= streamStableAfter {
+			attempt = 0
+		}
+
+		switch {
+		case errors.Is(err, io.EOF):
+			logs.Sugar.Warnln("DCS closed the events stream")
+		default:
+			logs.Sugar.Errorf("Events stream failed: %v", err)
+		}
+
+		delay := exponentialBackoff(attempt, streamBaseDelay, streamMaxDelay)
+		attempt++
+		logs.Sugar.Warnf("Reopening the events stream in %v", delay)
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(delay):
+		}
 	}
 }
 
-func handleStreamEvents(eventHandler EventHandler) error {
+// runEventStream opens a fresh stream and pumps events from it until it fails.
+// The stream is deliberately opened here rather than once at startup: a gRPC
+// stream is dead for good once Recv returns an error, so reusing one would mean
+// never recovering from a DCS restart.
+func runEventStream(ctx context.Context, eventHandler EventHandler) error {
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stream, err := initializers.OpenEventStream(streamCtx)
+	if err != nil {
+		return err
+	}
+
+	logs.Sugar.Infoln("Events stream opened")
+
 	for {
-		event, err := initializers.StreamEventsClient.Recv()
+		event, err := stream.Recv()
 		if err != nil {
 			return err
 		}
 
 		logs.Sugar.Debugf("Received event: %v", event.Event)
-		err = eventHandler.HandleEvent(event)
-		if err != nil {
+		if err := handleEventSafely(eventHandler, event); err != nil {
 			logs.Sugar.Errorf("Failed to handle event: %v", err)
 		}
 	}
+}
+
+// handleEventSafely turns a panic in an event handler into an error. The stream
+// runs on its own goroutine, so without this a single malformed event would
+// take the whole process down instead of just skipping that event.
+func handleEventSafely(eventHandler EventHandler, event *mission.StreamEventsResponse) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic while handling %T event: %v", event.GetEvent(), r)
+			logs.Sugar.Errorf("%v\n%s", err, debug.Stack())
+		}
+	}()
+
+	return eventHandler.HandleEvent(event)
+}
+
+// exponentialBackoff returns base * 2^attempt, capped at max.
+func exponentialBackoff(attempt int, base, max time.Duration) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+
+	delay := float64(base) * math.Pow(2, float64(attempt))
+	if delay >= float64(max) || math.IsInf(delay, 0) {
+		return max
+	}
+
+	return time.Duration(delay)
 }
 
 func CrashEvent(p *mission.StreamEventsResponse_CrashEvent) error {
@@ -278,22 +361,17 @@ func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {
 
 	if u.GetPlayerName() != "" {
 		connectedPlayer.PlayerName = u.PlayerName
-		if !connectedPlayer.CheckIfPlayerInDB() {
-			err := connectedPlayer.CreatePlayer()
-			if err != nil {
-				logs.Sugar.Errorf(logCreatePlayer, err)
-				return err
-			}
+		if err := connectedPlayer.EnsureInDB(); err != nil {
+			logs.Sugar.Errorf(logCreatePlayer, err)
+			return err
 		}
 	} else {
-		// If no player is attached to the unit, it's an AI unit
-		if !models.AIPlayer.CheckIfPlayerInDB() {
-
-			err := models.AIPlayer.CreatePlayer()
-			if err != nil {
-				logs.Sugar.Errorf(logCreatePlayer, err)
-				return err
-			}
+		// If no player is attached to the unit, it's an AI unit. Work on a copy
+		// so the package-level template is not mutated by the database lookup.
+		aiPlayer := models.AIPlayer
+		if err := aiPlayer.EnsureInDB(); err != nil {
+			logs.Sugar.Errorf(logCreatePlayer, err)
+			return err
 		}
 	}
 
@@ -334,28 +412,25 @@ func ConnectEvent(p *mission.StreamEventsResponse_ConnectEvent) error {
 
 	connectedPlayer.FromStreamEventsResponse_ConnectEvent(p)
 
-	// Check if player is in DB
-	if p.GetName(); !connectedPlayer.CheckIfPlayerInDB() {
-		err := connectedPlayer.CreatePlayer()
-		if err != nil {
-			logs.Sugar.Errorf(logCreatePlayer, err)
-			return err
-		}
-	} else { // If player is in DB, update player
-		updatedPlayer := models.Player{
-			UCID:       p.Ucid,
-			PlayerName: &p.Name,
-		}
-
-		err := connectedPlayer.UpdatePlayer(&updatedPlayer)
-		if err != nil {
-			logs.Sugar.Errorf("Failed to update player: %v", err)
-			return err
-		}
-
-		logs.Sugar.Debugf("Player updated: %v", connectedPlayer.GetPlayerName())
-
+	// The connect event carries the UCID directly, so the player can be stored
+	// without consulting the server's player list.
+	if err := connectedPlayer.EnsureInDB(); err != nil {
+		logs.Sugar.Errorf(logCreatePlayer, err)
+		return err
 	}
+
+	// Reconnecting under a new name is common, so refresh the stored details.
+	updatedPlayer := models.Player{
+		UCID:       p.GetUcid(),
+		PlayerName: &p.Name,
+	}
+
+	if err := connectedPlayer.UpdatePlayer(&updatedPlayer); err != nil {
+		logs.Sugar.Errorf("Failed to update player: %v", err)
+		return err
+	}
+
+	logs.Sugar.Debugf("Player connected: %v", connectedPlayer.GetPlayerName())
 
 	return nil
 }

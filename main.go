@@ -1,7 +1,7 @@
 package main
 
 import (
-	"os"
+	"context"
 	"os/signal"
 	"syscall"
 
@@ -15,36 +15,26 @@ func init() {
 	initializers.LoadEnvVariables()
 
 	initializers.ConnectToDB()
-	initializers.InitGrpc()
+
+	if err := initializers.InitGrpc(); err != nil {
+		logs.Sugar.Fatalf("Failed to configure the gRPC client: %v", err)
+	}
 }
 
 func main() {
-
-	go routers.GraphQLHandler()
-
-	// Create a channel to listen for OS signals
-	sigs := make(chan os.Signal, 1)
-
-	// Channel to wait for the done signal
-	done := make(chan bool, 1)
-
-	// We'll accept graceful shutdowns when quit via SIGINT (Ctrl+C)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	go controllers.StreamEvents()
-
 	defer initializers.GrpcClientConn.Close()
 
-	go func() {
-		sig := <-sigs // This will block the program until a signal is received
-		logs.Sugar.Infoln("Signal received: ", sig)
-		done <- true
-	}()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go routers.GraphQLHandler()
+	go controllers.StreamEvents(ctx)
 
 	logs.Sugar.Infoln("Server started")
 
-	// Wait here until we receive the done signal
-	<-done
+	// Block until SIGINT or SIGTERM arrives; cancelling the context lets the
+	// event stream unwind instead of being killed mid-reconnect.
+	<-ctx.Done()
 
 	logs.Sugar.Infoln("Server stopped")
 }

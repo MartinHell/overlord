@@ -45,24 +45,6 @@ func (w *Weapon) FindWeaponByType() error {
 
 }
 
-func (w *Weapon) CreateWeapon() error {
-	// Query if weapon already exists
-	if err := w.FindWeaponByType(); err.Error() == "Weapon not found" {
-		// Create weapon
-		result := initializers.DB.Create(w)
-
-		if result.Error != nil {
-			logs.Sugar.Errorf("Failed to create weapon: %v", result.Error)
-			return result.Error
-		}
-
-		return nil
-	} else {
-		return nil
-	}
-
-}
-
 func (w *Weapon) UpdateWeapon(uw *Weapon) error {
 
 	hasChanges := false
