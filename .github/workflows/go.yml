@@ -16,9 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          # gqlgen v0.17.47 fails silently on newer toolchains, so pin the
-          # version the module declares until gqlgen is upgraded.
-          go-version: '1.22'
+          go-version-file: go.mod
           cache: true
 
       - name: Generate GraphQL code
