@@ -54,6 +54,8 @@ type UnitProfile {
     origin: String
     maker: String
     blurb: String
+    "Canonical article to read further. Null when none is recorded."
+    source: String
 
     sorties: Int!
     shots: Int!
@@ -77,6 +79,7 @@ type WeaponProfile {
     origin: String
     maker: String
     blurb: String
+    source: String
 
     shots: Int!
     hits: Int!

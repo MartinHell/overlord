@@ -98,6 +98,8 @@ type UnitProfileView struct {
 	Origin   string
 	Maker    string
 	Blurb    string
+	// Source is a canonical article to read further, empty when none is recorded.
+	Source string
 
 	// Recorded, not reference: everything below comes from the events table.
 	Sorties     int
@@ -120,6 +122,7 @@ type WeaponProfileView struct {
 	Origin   string
 	Maker    string
 	Blurb    string
+	Source   string
 
 	Shots        int
 	Hits         int

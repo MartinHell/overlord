@@ -410,6 +410,10 @@ table.grid {
   font-weight: 400;
 }
 
+.card-more { margin: 0.9rem 0 0; font-size: 0.78rem; }
+.card-more a { color: var(--amber); text-decoration: none; border-bottom: 1px solid var(--amber-dim); }
+.card-more a:hover { border-bottom-color: var(--amber); }
+
 /* Names that open a reference card look interactive. */
 .ref {
   color: var(--ink);

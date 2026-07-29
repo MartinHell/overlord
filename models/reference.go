@@ -155,6 +155,80 @@ var weaponProfiles = map[string]Profile{
 	"weapons.shells.7_62x54_NOTRACER": {"7.62x54mm", "", "Machine gun ammunition", "Soviet Union", "", "Rifle calibre machine gun round."},
 }
 
+// wiki is the article prefix. Only ever linked, never copied: Wikipedia prose is
+// CC BY-SA and this repository is MIT, so pulling text in would attach a
+// share-alike obligation to part of an MIT codebase.
+const wiki = "https://en.wikipedia.org/wiki/"
+
+// Citations live apart from the profile tables so those stay readable and a
+// missing link is obviously missing rather than an empty string in a literal.
+var unitSources = map[string]string{
+	"F-14B": "Grumman_F-14_Tomcat", "F-15C": "McDonnell_Douglas_F-15_Eagle",
+	"F-15E": "McDonnell_Douglas_F-15E_Strike_Eagle", "F-16C_50": "General_Dynamics_F-16_Fighting_Falcon",
+	"FA-18C_hornet": "McDonnell_Douglas_F/A-18_Hornet", "A-10A": "Fairchild_Republic_A-10_Thunderbolt_II",
+	"A-10C": "Fairchild_Republic_A-10_Thunderbolt_II", "AV8BNA": "McDonnell_Douglas_AV-8B_Harrier_II",
+	"F-4E": "McDonnell_Douglas_F-4_Phantom_II", "M-2000C": "Dassault_Mirage_2000",
+	"AJS37": "Saab_37_Viggen",
+	"Su-27": "Sukhoi_Su-27", "Su-33": "Sukhoi_Su-33", "Su-25": "Sukhoi_Su-25",
+	"Su-25T": "Sukhoi_Su-25", "Su-24M": "Sukhoi_Su-24", "Su-34": "Sukhoi_Su-34",
+	"MiG-29S": "Mikoyan_MiG-29", "MiG-31": "Mikoyan_MiG-31",
+	"MiG-27K": "Mikoyan-Gurevich_MiG-27", "MiG-21Bis": "Mikoyan-Gurevich_MiG-21",
+	"Tu-22M3": "Tupolev_Tu-22M", "Tu-95MS": "Tupolev_Tu-95",
+	"A-50": "Beriev_A-50", "E-3A": "Boeing_E-3_Sentry",
+	"IL-78M": "Ilyushin_Il-78", "IL-76MD": "Ilyushin_Il-76", "An-26B": "Antonov_An-26",
+	"C-130": "Lockheed_C-130_Hercules", "C-17A": "Boeing_C-17_Globemaster_III",
+	"KC-135": "Boeing_KC-135_Stratotanker",
+	"AH-64A": "Boeing_AH-64_Apache", "AH-64D": "Boeing_AH-64_Apache",
+	"UH-60A": "Sikorsky_UH-60_Black_Hawk", "CH-47D": "Boeing_CH-47_Chinook",
+	"Mi-8MT": "Mil_Mi-8", "Mi-24P": "Mil_Mi-24", "Mi-26": "Mil_Mi-26",
+	"Ka-50": "Kamov_Ka-50", "SA342M": "A%C3%A9rospatiale_Gazelle",
+	"M-1 Abrams": "M1_Abrams", "M-2 Bradley": "M2_Bradley",
+	"M1097 Avenger": "AN/TWQ-1_Avenger", "T-72B": "T-72", "T-80UD": "T-80",
+	"BMP-2": "BMP-2", "BTR-80": "BTR-80", "Ural-375": "Ural-375D",
+	"Roland ADS": "Roland_(missile)", "Strela-10M3": "9K35_Strela-10",
+	"Tor 9A331": "Tor_missile_system", "SA-11 Buk LN 9A310M1": "Buk_missile_system",
+	"Hawk tr": "MIM-23_Hawk",
+}
+
+var weaponSources = map[string]string{
+	"AIM_54C_Mk47": "AIM-54_Phoenix", "AIM_120": "AIM-120_AMRAAM", "AIM_120C": "AIM-120_AMRAAM",
+	"AIM_9": "AIM-9_Sidewinder", "AIM_9X": "AIM-9_Sidewinder", "AIM_7": "AIM-7_Sparrow",
+	"P_27P": "R-27_(air-to-air_missile)", "P_27PE": "R-27_(air-to-air_missile)",
+	"P_27TE": "R-27_(air-to-air_missile)", "P_33E": "R-33_(missile)",
+	"P_40T": "R-40_(missile)", "P_60": "R-60_(missile)", "P_73": "R-73_(missile)",
+	"AGM_88": "AGM-88_HARM", "AGM_154": "AGM-154_Joint_Standoff_Weapon",
+	"AGM_65D": "AGM-65_Maverick", "AGM_65H": "AGM-65_Maverick", "AGM_114K": "AGM-114_Hellfire",
+	"X_25MP": "Kh-25", "X_31P": "Kh-31", "X_58": "Kh-58",
+	"GBU_12": "Paveway", "GBU_31": "Joint_Direct_Attack_Munition",
+	"GBU_38": "Joint_Direct_Attack_Munition", "KAB_500": "KAB-500Kr", "RBK_250": "RBK-250",
+	"TOW2": "BGM-71_TOW", "KONKURS": "9M113_Konkurs", "AT_6": "9K114_Shturm",
+	"FIM_92C": "FIM-92_Stinger", "ROLAND_R": "Roland_(missile)",
+	"SA9M330": "Tor_missile_system", "SA9M333": "9K35_Strela-10", "SA9M38M1": "Buk_missile_system",
+	"weapons.shells.M61_20_HE": "M61_Vulcan",
+	"weapons.shells.M2_12_7":   "M2_Browning", "weapons.shells.M2_12_7_T": "M2_Browning",
+	"weapons.shells.2A42_30_HE": "Shipunov_2A42", "weapons.shells.2A42_30_AP": "Shipunov_2A42",
+	"weapons.shells.M242_25_AP_M791": "M242_Bushmaster", "weapons.shells.M242_25_HE_M792": "M242_Bushmaster",
+	"weapons.shells.M256_120_AP": "M256", "weapons.shells.M256_120_HE": "M256",
+}
+
+// UnitSource returns a canonical article for a unit type, or an empty string
+// where no confident article title is recorded. Callers fall back to a search so
+// a link is always offered and never dead.
+func UnitSource(unitType string) string {
+	if slug := unitSources[unitType]; slug != "" {
+		return wiki + slug
+	}
+	return ""
+}
+
+// WeaponSource is the same for a store.
+func WeaponSource(weaponType string) string {
+	if slug := weaponSources[weaponType]; slug != "" {
+		return wiki + slug
+	}
+	return ""
+}
+
 // UnitProfile returns reference data for a unit type. The second result reports
 // whether the type is actually in the table, so callers can distinguish curated
 // data from a prettified guess.

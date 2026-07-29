@@ -480,13 +480,13 @@ async function refreshLog() {
 // --- reference card --------------------------------------------------------
 
 const CARD_UNIT = `query($t: String!) { unitProfile(type: $t) {
-  type curated name nickname role origin maker blurb
+  type curated name nickname role origin maker blurb source
   sorties shots hits kills losses ejections timesKilled
   stores { weaponType count }
 } }`;
 
 const CARD_WEAPON = `query($t: String!) { weaponProfile(type: $t) {
-  type curated name nickname role origin maker blurb
+  type curated name nickname role origin maker blurb source
   shots hits kills hitsPerShot killsPerShot
   carriers { unitType weapons { count } }
 } }`;
@@ -505,6 +505,14 @@ async function gqlVars(query, variables) {
 
 function fact(label, value, big) {
   return `<div><dt>${esc(label)}</dt><dd${big ? ' class="big"' : ""}>${esc(value)}</dd></div>`;
+}
+
+// Always offer somewhere to read further. A recorded article when we have one,
+// otherwise a search, which cannot 404.
+function readMore(p) {
+  const href = p.source || `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(p.name)}`;
+  const label = p.source ? "read more" : "search for this";
+  return `<p class="card-more"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label} →</a></p>`;
 }
 
 function identityFacts(p) {
@@ -545,6 +553,7 @@ async function openCard(kind, type) {
         (p.blurb ? `<p class="card-blurb">${esc(p.blurb)}</p>` : "") +
         provenance(p) +
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
+        readMore(p) +
         `<h4>recorded</h4>` +
         `<dl class="card-facts">
           ${fact("sorties", p.sorties, true)}
@@ -571,6 +580,7 @@ async function openCard(kind, type) {
         (p.blurb ? `<p class="card-blurb">${esc(p.blurb)}</p>` : "") +
         provenance(p) +
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
+        readMore(p) +
         `<h4>recorded</h4>` +
         `<dl class="card-facts">
           ${fact("shots", p.shots, true)}

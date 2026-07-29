@@ -300,6 +300,7 @@ func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {
 		Type: unitType, Curated: curated,
 		Name: profile.Name, Nickname: profile.Nickname, Role: profile.Role,
 		Origin: profile.Origin, Maker: profile.Maker, Blurb: profile.Blurb,
+		Source: models.UnitSource(unitType),
 	}
 
 	// One pass over the events for this airframe, counted by kind.
@@ -378,6 +379,7 @@ func GetWeaponProfile(weaponType string) (*models.WeaponProfileView, error) {
 		Type: weaponType, Curated: curated,
 		Name: profile.Name, Nickname: profile.Nickname, Role: profile.Role,
 		Origin: profile.Origin, Maker: profile.Maker, Blurb: profile.Blurb,
+		Source: models.WeaponSource(weaponType),
 	}
 
 	var totals models.WeaponEffectiveness
