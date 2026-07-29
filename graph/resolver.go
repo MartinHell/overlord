@@ -86,7 +86,7 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 
 // KillsByCoalition returns the kill tally for every coalition at once.
 func (r *queryResolver) KillsByCoalition(ctx context.Context) ([]*models.CoalitionKills, error) {
-	return controllers.GetKillsByCoalition(), nil
+	return controllers.GetKillsByCoalition()
 }
 
 // Event is the resolver for the event field.
@@ -131,20 +131,12 @@ func (r *queryResolver) Healthcheck(ctx context.Context) (string, error) {
 
 // ShotsBreakdown returns a breakdown of shots by unit and weapon type
 func (r *queryResolver) ShotsBreakdown(ctx context.Context) ([]*models.UnitWeaponBreakdown, error) {
-	events := controllers.GetEventsByType("shot")
-	breakdown := generateBreakdownUnits(events)
-
-	return generateUnitWeaponBreakdown(breakdown), nil
+	return controllers.GetShotsBreakdown()
 }
 
 // ShotsByPlayers returns a breakdown of shots by all players
 func (r *queryResolver) ShotsByPlayers(ctx context.Context) ([]*models.PlayerShotBreakdown, error) {
-	events := controllers.GetEventsByType("shot")
-	if events == nil {
-		return nil, nil // or handle the nil events case as needed
-	}
-
-	return GeneratePlayerShotBreakdowns(events)
+	return controllers.GetShotsByPlayers()
 }
 
 // ShotsByPlayer returns a breakdown of shots by a specific player
@@ -153,27 +145,11 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, playerID string) (*mo
 	// signature; keep the parsed value under a different name.
 	var id uint
 	if playerID != "" {
-		tmpID, _ := strconv.ParseUint(playerID, 10, 64)
-		id = uint(tmpID)
+		parsed, _ := strconv.ParseUint(playerID, 10, 64)
+		id = uint(parsed)
 	}
 
-	events := controllers.GetEventsByTypeAndPlayer("shot", id)
-	if events == nil {
-		return nil, nil // or handle the nil events case as needed
-	}
-
-	var result []*models.PlayerShotBreakdown
-
-	result, err := GeneratePlayerShotBreakdowns(events)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(result) == 0 {
-		return nil, nil
-	}
-
-	return result[0], nil
+	return controllers.GetShotsByPlayer(id)
 }
 
 // TargetID is the resolver for the targetID field.

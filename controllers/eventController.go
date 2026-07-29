@@ -22,14 +22,6 @@ type EventHandler interface {
 
 type DCSEventHandler struct{}
 
-func GetEvents() []*models.Event {
-	var events []*models.Event
-
-	initializers.ApplyPreloads(initializers.DB).Find(&events)
-
-	return events
-}
-
 const (
 	// defaultPageSize applies when a query omits the optional first argument.
 	defaultPageSize = 50
@@ -37,14 +29,6 @@ const (
 	// ask for the whole table in one request.
 	maxPageSize = 500
 )
-
-func GetEventsByType(eventType string) []*models.Event {
-	var events []*models.Event
-
-	initializers.ApplyPreloads(initializers.DB).Where("event = ?", eventType).Find(&events)
-
-	return events
-}
 
 // EventPage is one page of events plus what the caller needs to ask for the
 // next one.
@@ -97,54 +81,6 @@ func GetEventsPage(eventType, coalition string, first int, after string) (EventP
 	}
 
 	return page, nil
-}
-
-// GetKillsByCoalition tallies kill events per initiating coalition, covering
-// both sides in a single query.
-func GetKillsByCoalition() []*models.CoalitionKills {
-	var events []*models.Event
-
-	initializers.DB.Where("event = ?", "kill").Find(&events)
-
-	order := []string{}
-	tally := map[string]*models.CoalitionKills{}
-
-	for _, event := range events {
-		coalition := event.Coalition
-		if coalition == "" {
-			coalition = models.CoalitionUnknown
-		}
-
-		if tally[coalition] == nil {
-			tally[coalition] = &models.CoalitionKills{Coalition: coalition}
-			order = append(order, coalition)
-		}
-
-		tally[coalition].Kills++
-
-		// Only count a teamkill when both sides are actually known. Two unknown
-		// coalitions compare equal but say nothing about whose side anyone was
-		// on, and historical events predating coalition tracking are all
-		// unknown.
-		if coalition != models.CoalitionUnknown && event.TargetCoalition == coalition {
-			tally[coalition].Teamkills++
-		}
-	}
-
-	result := make([]*models.CoalitionKills, 0, len(order))
-	for _, coalition := range order {
-		result = append(result, tally[coalition])
-	}
-
-	return result
-}
-
-func GetEventsByTypeAndPlayer(eventType string, playerID uint) []*models.Event {
-	var events []*models.Event
-
-	initializers.ApplyPreloads(initializers.DB).Where("event = ? AND player_id = ?", eventType, playerID).Find(&events)
-
-	return events
 }
 
 func GetEvent(id string) *models.Event {

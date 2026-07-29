@@ -11,5 +11,11 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "overlord.fullname" . }}:{{ .Values.service.port }}']
+      # /healthz rather than /: the root only serves the GraphQL playground when
+      # ENVIRONMENT is not production, so testing it would fail on exactly the
+      # configuration people should be running.
+      args:
+        - '-q'
+        - '-O-'
+        - 'http://{{ include "overlord.fullname" . }}:{{ .Values.service.port }}/healthz'
   restartPolicy: Never
