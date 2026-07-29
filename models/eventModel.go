@@ -19,6 +19,11 @@ type Event struct {
 	PlayerID *uint
 	Player   Player `gorm:"foreignKey:PlayerID;references:PlayerID"`
 	Event    string
+	// MissionTime is the DCS mission clock in seconds, as reported by the event
+	// stream. CreatedAt records when overlord wrote the row, which drifts from
+	// the sim and does not survive a restart mid-mission; this is the timestamp
+	// that lines up with a track file.
+	MissionTime float64 `gorm:"index"`
 	// Coalition of the initiator at the time of the event. It lives here rather
 	// than on Player because a human can switch sides between sorties, so only
 	// the event knows which side they were on when it happened.
@@ -102,6 +107,7 @@ func (e *Event) CreateEvent() error {
 		event := Event{
 			PlayerID:        e.PlayerID,
 			Event:           e.Event,
+			MissionTime:     e.MissionTime,
 			Coalition:       e.Coalition,
 			InitiatorUnitID: e.InitiatorUnitID,
 			TargetID:        e.TargetID,

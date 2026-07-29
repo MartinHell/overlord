@@ -115,52 +115,46 @@ func GetEvent(id string) *models.Event {
 }
 
 func (d *DCSEventHandler) HandleEvent(event *mission.StreamEventsResponse) error {
-	// Handle the event here, using the event handler interface
+	// Every event carries the mission clock, which is the only timestamp that
+	// survives an overlord restart or lines up with a track file.
+	missionTime := event.GetTime()
 
 	switch inner := event.GetEvent().(type) {
 	case *mission.StreamEventsResponse_Connect:
 		logs.Sugar.Debugf("Connect event: %v", inner.Connect)
-		err := ConnectEvent(inner.Connect)
-		if err != nil {
-			return err
-		}
-		logs.Sugar.Debugf("Connect event processed: %v", inner.Connect)
+		return ConnectEvent(inner.Connect)
 
 	case *mission.StreamEventsResponse_Birth:
 		logs.Sugar.Debugf("Birth event: %v", inner.Birth)
-		err := BirthEvent(inner.Birth)
-		if err != nil {
-			return err
-		}
-		logs.Sugar.Debugf("Birth event processed: %v", inner.Birth)
+		return BirthEvent(inner.Birth)
 
 	case *mission.StreamEventsResponse_Shot:
 		logs.Sugar.Debugf("Shot event: %v", inner.Shot)
-		err := ShotEvent(inner.Shot)
-		if err != nil {
-			return err
-		}
-		logs.Sugar.Debugf("Shot event processed: %v", inner.Shot)
+		return ShotEvent(inner.Shot, missionTime)
+
+	case *mission.StreamEventsResponse_Hit:
+		logs.Sugar.Debugf("Hit event: %v", inner.Hit)
+		return HitEvent(inner.Hit, missionTime)
 
 	case *mission.StreamEventsResponse_Kill:
 		logs.Sugar.Debugf("Kill event: %v", inner.Kill)
-		err := KillEvent(inner.Kill)
-		if err != nil {
-			return err
-		}
-		logs.Sugar.Debugf("Kill event processed: %v", inner.Kill)
+		return KillEvent(inner.Kill, missionTime)
 
 	case *mission.StreamEventsResponse_Crash:
 		logs.Sugar.Debugf("Crash event: %v", inner.Crash)
-		err := CrashEvent(inner.Crash)
-		if err != nil {
-			return err
-		}
-		logs.Sugar.Debugf("Crash event processed: %v", inner.Crash)
+		return initiatorEvent("crash", missionTime, inner.Crash.GetInitiator())
+
+	case *mission.StreamEventsResponse_UnitLost:
+		logs.Sugar.Debugf("UnitLost event: %v", inner.UnitLost)
+		return initiatorEvent("unit_lost", missionTime, inner.UnitLost.GetInitiator())
+
+	case *mission.StreamEventsResponse_PilotDead:
+		logs.Sugar.Debugf("PilotDead event: %v", inner.PilotDead)
+		return initiatorEvent("pilot_dead", missionTime, inner.PilotDead.GetInitiator())
 
 	case *mission.StreamEventsResponse_SimulationFps:
 	default:
-		logs.Sugar.Debugf("Received unknown event type: %T", inner)
+		logs.Sugar.Debugf("Received unhandled event type: %T", inner)
 	}
 
 	return nil
@@ -292,35 +286,37 @@ func resolvePlayer(u *common.Unit) models.Player {
 	return models.AIPlayerFor(models.CoalitionFromUnit(u))
 }
 
-func CrashEvent(p *mission.StreamEventsResponse_CrashEvent) error {
-	logs.Sugar.Debugf("Crash event: %v", p)
-
-	u := p.Initiator.GetUnit()
+// initiatorEvent stores an event that only identifies the unit it happened to:
+// crash, unit_lost and pilot_dead all have this shape.
+func initiatorEvent(eventType string, missionTime float64, initiator *common.Initiator) error {
+	u := initiator.GetUnit()
+	if u == nil {
+		logs.Sugar.Debugf("Skipping %s event without a unit initiator", eventType)
+		return nil
+	}
 
 	connectedPlayer := resolvePlayer(u)
 
-	initiator := models.Unit{}
-	initiator.FromCommonUnit(u)
+	unit := models.Unit{}
+	unit.FromCommonUnit(u)
 
-	event := models.Event{Coalition: models.CoalitionFromUnit(u)}
+	event := models.Event{
+		MissionTime: missionTime,
+		Coalition:   models.CoalitionFromUnit(u),
+	}
 
-	event.FromStreamEventsResponse("crash", &connectedPlayer, &initiator, nil, nil)
+	event.FromStreamEventsResponse(eventType, &connectedPlayer, &unit, nil, nil)
 
 	if err := event.CreateEvent(); err != nil {
-		logs.Sugar.Errorf("Failed to store crash event: %v", err)
+		logs.Sugar.Errorf("Failed to store %s event: %v", eventType, err)
 		return err
 	}
 
 	return nil
 }
 
-func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
-
-	logs.Sugar.Debugf("Shot event: %v", p)
-
-	// Set Weapon
+func ShotEvent(p *mission.StreamEventsResponse_ShotEvent, missionTime float64) error {
 	var weapon models.Weapon
-
 	weapon.Type = p.GetWeapon().GetType()
 
 	u := p.Initiator.GetUnit()
@@ -330,7 +326,10 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 	initiator := models.Unit{}
 	initiator.FromCommonUnit(u)
 
-	event := models.Event{Coalition: models.CoalitionFromUnit(u)}
+	event := models.Event{
+		MissionTime: missionTime,
+		Coalition:   models.CoalitionFromUnit(u),
+	}
 
 	event.FromStreamEventsResponse("shot", &connectedPlayer, &initiator, &weapon, nil)
 
@@ -342,67 +341,120 @@ func ShotEvent(p *mission.StreamEventsResponse_ShotEvent) error {
 	return nil
 }
 
-func KillEvent(p *mission.StreamEventsResponse_KillEvent) error {
+// HitEvent records a weapon striking something. It shares its shape with a kill,
+// which is what makes accuracy and Pk computable: shots fired versus hits landed
+// versus kills achieved.
+func HitEvent(p *mission.StreamEventsResponse_HitEvent, missionTime float64) error {
+	return engagementEvent("hit", missionTime, p.GetInitiator(), p.GetWeapon(), p.WeaponName, p.GetTarget())
+}
 
-	logs.Sugar.Debugf("Kill event: %v", p)
+func KillEvent(p *mission.StreamEventsResponse_KillEvent, missionTime float64) error {
+	return engagementEvent("kill", missionTime, p.GetInitiator(), p.GetWeapon(), p.WeaponName, p.GetTarget())
+}
 
-	// Set Weapon
+// engagementEvent stores an event describing one thing acting on another with a
+// weapon. Hit and kill events are identical in shape, so they share this path.
+func engagementEvent(
+	eventType string,
+	missionTime float64,
+	initiator *common.Initiator,
+	protoWeapon *common.Weapon,
+	weaponName *string,
+	protoTarget *common.Target,
+) error {
+	// Set Weapon. Some events name the weapon without describing it, notably
+	// when the "weapon" was an aircraft flown into the ground.
 	var weapon models.Weapon
-	if p.Weapon != nil {
-		weapon.Type = p.Weapon.Type
-	} else if p.WeaponName != nil {
-		weapon.Type = *p.WeaponName
+	if protoWeapon != nil {
+		weapon.Type = protoWeapon.GetType()
+	} else if weaponName != nil {
+		weapon.Type = *weaponName
 	}
 
-	// Check if player already exists in DB
 	var connectedPlayer models.Player
-	initiator := models.Unit{}
+	initiatorUnit := models.Unit{}
 	coalition := models.CoalitionUnknown
 
-	if p.Initiator != nil {
-		u := p.Initiator.GetUnit()
+	if initiator != nil {
+		u := initiator.GetUnit()
 
 		connectedPlayer = resolvePlayer(u)
 		coalition = models.CoalitionFromUnit(u)
 
-		initiator.FromCommonUnit(u)
+		initiatorUnit.FromCommonUnit(u)
 	}
 
-	// Create event in DB
+	target, targetCoalition := buildTarget(protoTarget)
 
-	// Create target
-	target := models.Target{}
-	targetCoalition := models.CoalitionUnknown
-	if p.Target != nil {
-		tgt := p.Target.GetUnit()
-
-		if tgt != nil {
-			targetCoalition = models.CoalitionFromUnit(tgt)
-
-			if tgt.GetPlayerName() != "" {
-				target.Player.PlayerName = tgt.PlayerName
-				target.Player.GetPlayerFromDB()
-			}
-
-			target.Unit.FromCommonUnit(tgt)
-		} else if p.Target.GetWeapon() != nil {
-			target.Weapon.FromCommonWeapon(p.Target.GetWeapon())
-		} else {
-			// TODO: Handle more target types
-			logs.Sugar.Debugf("Unknown target type: %v", p.Target)
-		}
+	event := models.Event{
+		MissionTime:     missionTime,
+		Coalition:       coalition,
+		TargetCoalition: targetCoalition,
 	}
 
-	event := models.Event{Coalition: coalition, TargetCoalition: targetCoalition}
-
-	event.FromStreamEventsResponse("kill", &connectedPlayer, &initiator, &weapon, &target)
+	event.FromStreamEventsResponse(eventType, &connectedPlayer, &initiatorUnit, &weapon, &target)
 
 	if err := event.CreateEvent(); err != nil {
-		logs.Sugar.Errorf("Failed to store kill event: %v", err)
+		logs.Sugar.Errorf("Failed to store %s event: %v", eventType, err)
 		return err
 	}
 
 	return nil
+}
+
+// buildTarget converts whatever a target turned out to be into a Target row.
+// Every branch records something: previously anything that was not a unit was
+// discarded, which lost the target on the great majority of air-to-ground kills.
+func buildTarget(protoTarget *common.Target) (models.Target, string) {
+	target := models.Target{Kind: models.TargetKindUnknown}
+	coalition := models.CoalitionUnknown
+
+	if protoTarget == nil {
+		return target, coalition
+	}
+
+	switch {
+	case protoTarget.GetUnit() != nil:
+		tgt := protoTarget.GetUnit()
+		target.Kind = models.TargetKindUnit
+		coalition = models.CoalitionFromUnit(tgt)
+
+		if tgt.GetPlayerName() != "" {
+			target.Player.PlayerName = tgt.PlayerName
+			if err := target.Player.GetPlayerFromDB(); err != nil {
+				logs.Sugar.Errorf("Failed to resolve target player: %v", err)
+			}
+		}
+
+		target.Unit.FromCommonUnit(tgt)
+
+	case protoTarget.GetWeapon() != nil:
+		// Shooting down a missile, for example.
+		target.Kind = models.TargetKindWeapon
+		target.Weapon.FromCommonWeapon(protoTarget.GetWeapon())
+
+	case protoTarget.GetStatic() != nil:
+		static := protoTarget.GetStatic()
+		target.Kind = models.TargetKindStatic
+		target.Unit.Type = static.GetType()
+		coalition = models.CoalitionFromProto(static.GetCoalition())
+
+	case protoTarget.GetScenery() != nil:
+		// Map objects: buildings, bridges. They belong to no coalition.
+		target.Kind = models.TargetKindScenery
+		target.Unit.Type = protoTarget.GetScenery().GetType()
+
+	case protoTarget.GetAirbase() != nil:
+		airbase := protoTarget.GetAirbase()
+		target.Kind = models.TargetKindAirbase
+		target.Unit.Type = airbase.GetName()
+		coalition = models.CoalitionFromProto(airbase.GetCoalition())
+
+	default:
+		logs.Sugar.Debugf("Unrecognised target type: %v", protoTarget)
+	}
+
+	return target, coalition
 }
 
 func BirthEvent(p *mission.StreamEventsResponse_BirthEvent) error {

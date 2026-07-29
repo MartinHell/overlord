@@ -7,6 +7,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// What a target turned out to be. Anything that was not a unit used to be
+// discarded entirely, which lost the target on most air-to-ground kills.
+const (
+	TargetKindUnit    = "unit"
+	TargetKindWeapon  = "weapon"
+	TargetKindStatic  = "static"
+	TargetKindScenery = "scenery"
+	TargetKindAirbase = "airbase"
+	TargetKindUnknown = "unknown"
+)
+
 type Target struct {
 	TargetID  uint `gorm:"primaryKey;autoIncrement;not null;unique;index"`
 	CreatedAt time.Time
@@ -15,24 +26,32 @@ type Target struct {
 	PlayerID  uint
 	WeaponID  uint
 	UnitID    uint
-	Player    Player
-	Unit      Unit
-	Weapon    Weapon
+	// Kind records which sort of thing was hit. Statics, scenery and airbases
+	// store their type in Unit, so without this they would be indistinguishable
+	// from aircraft.
+	Kind   string `gorm:"index"`
+	Player Player
+	Unit   Unit
+	Weapon Weapon
 }
 
 func ensureTarget(tx *gorm.DB, tgt Target) (*uint, error) {
 	var target Target
 
-	if tgt.Unit.Type == "" {
+	// A target is worth storing if we learned anything at all about it. The
+	// previous check required a unit type, which silently dropped weapon,
+	// static and scenery targets.
+	if tgt.Unit.Type == "" && tgt.Weapon.Type == "" {
 		return nil, nil
 	}
 
-	unitID, err := ensureUnit(tx, tgt.Unit)
-	if err != nil {
-		return nil, err
+	if tgt.Unit.Type != "" {
+		unitID, err := ensureUnit(tx, tgt.Unit)
+		if err != nil {
+			return nil, err
+		}
+		target.UnitID = *unitID
 	}
-
-	target.UnitID = *unitID
 
 	if tgt.Weapon.Type != "" {
 		weaponID, err := ensureWeapon(tx, tgt.Weapon, "Weapon")
@@ -42,7 +61,13 @@ func ensureTarget(tx *gorm.DB, tgt Target) (*uint, error) {
 		target.WeaponID = *weaponID
 	}
 
-	if err := tx.Where("unit_id = ? AND weapon_id = ?", target.UnitID, target.WeaponID).FirstOrCreate(&target, target).Error; err != nil {
+	target.Kind = tgt.Kind
+	if target.Kind == "" {
+		target.Kind = TargetKindUnknown
+	}
+
+	if err := tx.Where("unit_id = ? AND weapon_id = ? AND kind = ?", target.UnitID, target.WeaponID, target.Kind).
+		FirstOrCreate(&target, target).Error; err != nil {
 		logs.Sugar.Errorf("Failed to find or create target: %+v, error: %v", target, err)
 		return nil, err
 	}

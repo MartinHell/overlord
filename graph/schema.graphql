@@ -3,7 +3,10 @@ scalar Time
 type Event {
     id: ID!
     player: Player
+    "One of: shot, hit, kill, crash, unit_lost, pilot_dead."
     event: String!
+    "DCS mission clock in seconds when the event happened. Zero for events recorded before this was captured."
+    missionTime: Float!
     "Coalition of the initiator when the event happened: red, blue, neutral or unknown."
     coalition: String
     initiator: Unit
@@ -49,6 +52,8 @@ type Weapon {
 
 type Target {
     targetID: ID!
+    "What was hit: unit, weapon, static, scenery, airbase or unknown."
+    kind: String
     player: Player
     unit: Unit
     weapon: Weapon
