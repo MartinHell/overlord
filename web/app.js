@@ -33,6 +33,22 @@ const EV_CLASS = {
   pilot_dead: "ev-loss", ejection: "ev-loss",
 };
 
+// DCS event names are snake_case identifiers. Spell out the ones whose meaning
+// is not obvious from the words; everything else just loses its underscores.
+const EV_LABEL = {
+  pilot_dead: "pilot killed",
+  unit_lost: "unit lost",
+  runway_takeoff: "takeoff (runway)",
+  runway_touch: "touch and go",
+  engine_startup: "engine start",
+  engine_shutdown: "engine stop",
+  player_enter_unit: "entered slot",
+  player_leave_unit: "left slot",
+  player_change_slot: "changed slot",
+};
+
+const eventLabel = (e) => EV_LABEL[e] || String(e || "").replace(/_/g, " ");
+
 // --- state -----------------------------------------------------------------
 
 // DCS type identifier -> readable name, built from the units and weapons
@@ -233,11 +249,13 @@ function drawCoalition(rows) {
   el("coalition").innerHTML = sorted
     .map(
       (c) => `<div class="side" data-side="${esc(c.coalition)}">
-        <span class="side-name">${esc(c.coalition)}</span>
+        <div class="side-top">
+          <span class="side-name">${esc(c.coalition)}</span>
+          <span class="side-num"><b>${c.kills}</b> <i>kills</i>${
+            c.teamkills ? ` <span class="tk">· ${c.teamkills} friendly fire</span>` : ""
+          }</span>
+        </div>
         <span class="meter"><span style="width:${(c.kills / max) * 100}%"></span></span>
-        <span class="side-num"><b>${c.kills}</b> <i>splash</i>${
-          c.teamkills ? ` <span class="tk">· ${c.teamkills} blue-on-blue</span>` : ""
-        }</span>
       </div>`
     )
     .join("");
@@ -254,12 +272,12 @@ function drawWeapons(rows) {
   render(
     "weapons",
     [
-      { label: "store", key: "weaponType" },
-      { label: "shots", key: "shots", num: true },
-      { label: "hits", key: "hits", num: true },
-      { label: "splash", key: "kills", num: true },
-      { label: "hits/shot", key: "hitsPerShot", num: true },
-      { label: "kills/shot", key: "killsPerShot", num: true },
+      { label: "Weapon", key: "weaponType" },
+      { label: "Shots", key: "shots", num: true },
+      { label: "Hits", key: "hits", num: true },
+      { label: "Kills", key: "kills", num: true },
+      { label: "Hits / shot", key: "hitsPerShot", num: true },
+      { label: "Kills / shot", key: "killsPerShot", num: true },
     ],
     sortRows(filtered, "weapons"),
     (r) => `<tr>
@@ -283,12 +301,12 @@ function drawPilots(rows) {
   render(
     "pilots",
     [
-      { label: "pilot", key: "playerName" },
-      { label: "t/o", key: "takeoffs", num: true },
-      { label: "ldg", key: "landings", num: true },
-      { label: "crash", key: "crashes", num: true },
-      { label: "ejct", key: "ejections", num: true },
-      { label: "kia", key: "deaths", num: true },
+      { label: "Pilot", key: "playerName" },
+      { label: "Takeoffs", key: "takeoffs", num: true },
+      { label: "Landings", key: "landings", num: true },
+      { label: "Crashes", key: "crashes", num: true },
+      { label: "Ejections", key: "ejections", num: true },
+      { label: "Deaths", key: "deaths", num: true },
     ],
     sortRows(filtered, "pilots"),
     (r) => `<tr>
@@ -308,11 +326,11 @@ function drawTraps(rows) {
   render(
     "traps",
     [
-      { label: "time", key: "missionTime", num: true },
-      { label: "pilot", key: "playerName" },
-      { label: "airframe", key: "unitType" },
-      { label: "field", key: "place" },
-      { label: "grade", key: "grade" },
+      { label: "Time", key: "missionTime", num: true },
+      { label: "Pilot", key: "playerName" },
+      { label: "Aircraft", key: "unitType" },
+      { label: "Airfield", key: "place" },
+      { label: "Grade", key: "grade" },
     ],
     sortRows(filtered, "traps"),
     (r) => `<tr>
@@ -347,10 +365,10 @@ function drawLoadout(players) {
   render(
     "loadout",
     [
-      { label: "pilot", key: "playerName" },
-      { label: "airframe", key: "unitType" },
-      { label: "store", key: "weaponType" },
-      { label: "shots", key: "shots", num: true },
+      { label: "Pilot", key: "playerName" },
+      { label: "Aircraft", key: "unitType" },
+      { label: "Weapon", key: "weaponType" },
+      { label: "Shots", key: "shots", num: true },
     ],
     sortRows(filtered, "loadout"),
     (r) => `<tr>
@@ -370,7 +388,8 @@ function drawLog(connection) {
   const filtered = all
     .filter((n) =>
       matches([
-        n.event, n.player?.playerName, n.initiator?.type, n.initiatorName,
+        n.event, eventLabel(n.event),
+        n.player?.playerName, n.initiator?.type, n.initiatorName,
         n.initiatorCallsign, n.initiatorGroup, n.weapon?.type,
         n.target?.unit?.type, n.targetName, n.place,
       ])
@@ -385,12 +404,12 @@ function drawLog(connection) {
   render(
     "log",
     [
-      { label: "time", key: "missionTime", num: true },
-      { label: "event", key: "event" },
-      { label: "actor", key: "initiatorCallsign" },
-      { label: "airframe", key: "initiatorType" },
-      { label: "store", key: "weaponType" },
-      { label: "target", key: "targetType" },
+      { label: "Time", key: "missionTime", num: true },
+      { label: "Event", key: "event" },
+      { label: "Who", key: "initiatorCallsign" },
+      { label: "Aircraft", key: "initiatorType" },
+      { label: "Weapon", key: "weaponType" },
+      { label: "Target", key: "targetType" },
     ],
     sortRows(filtered, "log"),
     (n) => {
@@ -412,7 +431,7 @@ function drawLog(connection) {
 
       return `<tr>
         <td class="num">${clock(n.missionTime)}</td>
-        <td><span class="ev ${EV_CLASS[n.event] || "ev-sortie"}">${esc(n.event)}</span></td>
+        <td><span class="ev ${EV_CLASS[n.event] || "ev-sortie"}" title="${esc(n.event)}">${esc(eventLabel(n.event))}</span></td>
         <td class="name">${side}${esc(actor)}</td>
         <td>${n.initiatorType ? ref("unit", n.initiatorType) : "—"}</td>
         <td>${n.weaponType ? ref("weapon", n.weaponType) : `<span class="zero">—</span>`}</td>
@@ -456,12 +475,12 @@ async function refresh() {
     state.data = summary;
     state.log = log;
     draw();
-    link.textContent = `link ${new Date().toLocaleTimeString([], { hour12: false })}`;
-    link.className = "link up";
-    el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refresh ${REFRESH_MS / 1000}s`;
+    link.textContent = `Updated ${new Date().toLocaleTimeString([], { hour12: false })}`;
+    link.className = "status up";
+    el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refreshing every ${REFRESH_MS / 1000}s`;
   } catch (err) {
-    link.textContent = "no link";
-    link.className = "link down";
+    link.textContent = "Offline";
+    link.className = "status down";
     el("foot").textContent = `${err.message} — check that overlord is running and reachable at ${API_URL}`;
   }
 }
@@ -471,8 +490,8 @@ async function refreshLog() {
     state.log = await fetchLog();
     draw();
   } catch (err) {
-    el("link").textContent = "no link";
-    el("link").className = "link down";
+    el("link").textContent = "Offline";
+    el("link").className = "status down";
     el("foot").textContent = `${err.message} — check that overlord is reachable at ${API_URL}`;
   }
 }
@@ -513,7 +532,7 @@ function fact(label, value, big) {
 // otherwise a search, which cannot 404.
 function readMore(p) {
   const href = p.source || `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(p.name)}`;
-  const label = p.source ? "read more" : "search for this";
+  const label = p.source ? "Read more on Wikipedia" : "Search Wikipedia for this";
   return `<p class="card-more"><a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label} →</a></p>`;
 }
 
@@ -541,7 +560,7 @@ function specFacts(p) {
   const makers = (s.makers || []).join(", ");
   if (!rows.length && !makers) return "";
 
-  return `<h4>specifications</h4>` +
+  return `<h4>Specifications</h4>` +
     (rows.length ? `<dl class="card-facts">${rows.join("")}</dl>` : "") +
     (makers ? `<p class="card-makers">Built by ${esc(makers)}</p>` : "") +
     `<p class="card-prov">From <a href="https://www.wikidata.org/wiki/${esc(s.qid)}" target="_blank" rel="noopener noreferrer">Wikidata ${esc(s.qid)}</a>, which is public domain. Fields Wikidata does not hold are omitted rather than guessed.</p>`;
@@ -587,21 +606,21 @@ async function openCard(kind, type) {
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
         readMore(p) +
         specFacts(p) +
-        `<h4>recorded</h4>` +
+        `<h4>Recorded this mission</h4>` +
         `<dl class="card-facts">
           ${fact("sorties", p.sorties, true)}
           ${fact("shots", p.shots, true)}
           ${fact("hits scored", p.hits, true)}
-          ${fact("splash", p.kills, true)}
+          ${fact("kills", p.kills, true)}
           ${fact("lost", p.losses)}
           ${fact("ejections", p.ejections)}
-          ${fact("destroyed as target", p.timesKilled)}
+          ${fact("killed as target", p.timesKilled)}
         </dl>` +
         (p.stores.length
-          ? `<h4>stores expended</h4><div class="tw"><table class="grid"><tbody>${p.stores
+          ? `<h4>Weapons fired</h4><div class="tw"><table class="grid"><tbody>${p.stores
               .map((s) => `<tr><td>${ref("weapon", s.weaponType)}</td><td class="num">${s.count}</td></tr>`)
               .join("")}</tbody></table></div>`
-          : `<h4>stores expended</h4><p class="none">Nothing recorded.</p>`);
+          : `<h4>Weapons fired</h4><p class="none">Nothing recorded.</p>`);
     } else {
       const p = (await gqlVars(CARD_WEAPON, { t: type })).weaponProfile;
       if (!p) throw new Error("no profile");
@@ -615,19 +634,19 @@ async function openCard(kind, type) {
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
         readMore(p) +
         specFacts(p) +
-        `<h4>recorded</h4>` +
+        `<h4>Recorded this mission</h4>` +
         `<dl class="card-facts">
           ${fact("shots", p.shots, true)}
           ${fact("hits", p.hits, true)}
-          ${fact("splash", p.kills, true)}
+          ${fact("kills", p.kills, true)}
           ${fact("hits / shot", p.shots ? p.hitsPerShot.toFixed(2) : "—")}
           ${fact("kills / shot", p.shots ? p.killsPerShot.toFixed(2) : "—")}
         </dl>` +
         (p.carriers.length
-          ? `<h4>carried by</h4><div class="tw"><table class="grid"><tbody>${p.carriers
+          ? `<h4>Carried by</h4><div class="tw"><table class="grid"><tbody>${p.carriers
               .map((c) => `<tr><td>${ref("unit", c.unitType)}</td><td class="num">${c.weapons[0]?.count ?? 0}</td></tr>`)
               .join("")}</tbody></table></div>`
-          : `<h4>carried by</h4><p class="none">Nothing recorded.</p>`);
+          : `<h4>Carried by</h4><p class="none">Nothing recorded.</p>`);
     }
   } catch (err) {
     el("card-body").innerHTML = `<p class="card-uncurated">Could not load this card: ${esc(err.message)}</p>`;
@@ -702,27 +721,58 @@ el("q").addEventListener("input", (e) => {
 
 el("live").addEventListener("change", schedule);
 
-// Dark is the MFD, light is the kneeboard. Remembered per browser.
+// Theme. The inline script in index.html has already resolved and applied one
+// before first paint, so this only has to label the button and handle clicks.
+// The attribute is the single source of truth -- reading the button's own text
+// back to decide the next state breaks the moment the label is reworded.
 const themeBtn = el("theme");
+const system = window.matchMedia("(prefers-color-scheme: dark)");
 
 function applyTheme(mode) {
-  if (mode) document.documentElement.setAttribute("data-theme", mode);
-  else document.documentElement.removeAttribute("data-theme");
+  const root = document.documentElement;
 
-  const dark = mode
-    ? mode === "dark"
-    : !window.matchMedia("(prefers-color-scheme: light)").matches;
+  // Swap the tokens with transitions off, then hand them back; see
+  // .theme-switching in app.css for why. Reading offsetHeight forces the new
+  // colours to be resolved while the guard is still in place.
+  //
+  // setTimeout rather than requestAnimationFrame: a hidden or non-compositing
+  // tab never paints, so rAF never runs and the guard would stay on for the
+  // rest of the session.
+  root.classList.add("theme-switching");
+  root.setAttribute("data-theme", mode);
+  void root.offsetHeight;
+  setTimeout(() => root.classList.remove("theme-switching"), 0);
 
   // The button names where you are going, not where you are.
-  themeBtn.textContent = dark ? "kneeboard" : "mfd";
+  themeBtn.textContent = mode === "dark" ? "☀ Light" : "☾ Dark";
+  themeBtn.setAttribute(
+    "aria-label",
+    mode === "dark" ? "Switch to light theme" : "Switch to dark theme"
+  );
 }
 
-applyTheme(localStorage.getItem("overlord-theme"));
+applyTheme(document.documentElement.getAttribute("data-theme") || "dark");
 
 themeBtn.addEventListener("click", () => {
-  const next = themeBtn.textContent === "kneeboard" ? "light" : "dark";
-  localStorage.setItem("overlord-theme", next);
+  const next =
+    document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  try {
+    localStorage.setItem("overlord-theme", next);
+  } catch (e) {
+    /* private mode: the choice still applies, it just is not remembered */
+  }
   applyTheme(next);
+});
+
+// Follow the OS while the user has not made a choice of their own.
+system.addEventListener("change", (e) => {
+  let saved = null;
+  try {
+    saved = localStorage.getItem("overlord-theme");
+  } catch (err) {
+    /* ignore */
+  }
+  if (!saved) applyTheme(e.matches ? "dark" : "light");
 });
 
 refresh().then(openFromHash);
