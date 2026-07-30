@@ -21,6 +21,11 @@ func (r *eventResolver) ID(ctx context.Context, obj *models.Event) (string, erro
 }
 
 // PlayerID is the resolver for the playerID field.
+func (r *killRecordResolver) PlayerID(ctx context.Context, obj *models.KillRecord) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
 func (r *playerResolver) PlayerID(ctx context.Context, obj *models.Player) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
@@ -124,6 +129,11 @@ func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unit
 	}
 
 	return controllers.GetPlayerProfile(uint(parsed), narrow)
+}
+
+// Records is the resolver for the records field.
+func (r *queryResolver) Records(ctx context.Context) (*models.Records, error) {
+	return controllers.GetRecords()
 }
 
 // Collateral is the resolver for the collateral field.
@@ -283,6 +293,9 @@ func (r *weaponResolver) DeletedAt(ctx context.Context, obj *models.Weapon) (*ti
 // Event returns generated.EventResolver implementation.
 func (r *Resolver) Event() generated.EventResolver { return &eventResolver{r} }
 
+// KillRecord returns generated.KillRecordResolver implementation.
+func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecordResolver{r} }
+
 // Player returns generated.PlayerResolver implementation.
 func (r *Resolver) Player() generated.PlayerResolver { return &playerResolver{r} }
 
@@ -321,6 +334,7 @@ func (r *Resolver) Weapon() generated.WeaponResolver { return &weaponResolver{r}
 
 type (
 	eventResolver               struct{ *Resolver }
+	killRecordResolver          struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
 	playerActivityResolver      struct{ *Resolver }
 	playerProfileResolver       struct{ *Resolver }

@@ -107,6 +107,12 @@ const QUERY = `{
   shotsByPlayers { playerID playerName units { unitType weapons { weaponType count } } }
   playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
   landingGrades(first: 40) { playerName unitType place grade missionTime }
+  records {
+    firstBlood { playerID playerName unitType targetType missionTime }
+    longestKill { playerID playerName unitType weaponType targetType rangeM }
+    highestKill { playerID playerName unitType targetType altitudeM }
+    deadliest { weaponType shots kills killsPerShot }
+  }
   collateral { struck levelled trees structures top { displayName count tree } }
   units { type displayName }
   weapons { type displayName }
@@ -505,6 +511,7 @@ function draw() {
   drawTraps(d.landingGrades || []);
   drawLoadout(d.shotsByPlayers || []);
   drawLog(state.log);
+  drawRecords(d.records);
   el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
 
   const nodes = (state.log?.edges || []).map((e) => e.node);
@@ -682,6 +689,94 @@ function heatmap(rows, opts) {
     `<div class="tw"><table class="grid hm"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>` +
     (note.length ? `<p class="chart-scale">Showing the busiest — ${note.join(" and ")} not shown.</p>` : "")
   );
+}
+
+// Records: the standout moments.
+//
+// Everything else on this page is an aggregate, which tells you how a mission
+// went but never what happened in it. This is the part someone screenshots.
+//
+// Distances are nautical miles and altitudes are feet, because this is a flight
+// sim and that is what the HUD says. The metric value is on the tooltip, since
+// the rest of the app is metric and the two should be reconcilable.
+const M_TO_NM = 1 / 1852;
+const M_TO_FT = 3.28084;
+
+function recordCard(label, value, unit, detail, title) {
+  return `<div class="record"${title ? ` title="${esc(title)}"` : ""}>
+    <dt>${esc(label)}</dt>
+    <dd><b>${value}</b>${unit ? `<span class="unit">${esc(unit)}</span>` : ""}</dd>
+    <p>${detail}</p>
+  </div>`;
+}
+
+function drawRecords(r) {
+  if (!r || (!r.firstBlood && !r.longestKill && !r.highestKill && !r.deadliest)) {
+    el("records").innerHTML = `<p class="none">No kills yet. Give it time.</p>`;
+    return;
+  }
+
+  const who = (k) => pref(k.playerID, k.playerName);
+  const cards = [];
+
+  // Written as a trail rather than a sentence. "a F-14B" and "an Il-76" cannot
+  // both be got right from the spelling -- F is said "eff" and takes an, Su is
+  // said "soo" and takes a -- and the terse form scans better here anyway.
+  const arrow = `<span class="to">→</span>`;
+
+  if (r.firstBlood) {
+    const k = r.firstBlood;
+    cards.push(
+      recordCard("First blood", clock(k.missionTime), "",
+        `${who(k)} · ${ref("unit", k.unitType)} ${arrow} ${ref("unit", k.targetType)}`)
+    );
+  }
+
+  if (r.longestKill) {
+    const k = r.longestKill;
+    cards.push(
+      recordCard(
+        "Longest kill",
+        (k.rangeM * M_TO_NM).toFixed(1),
+        "nm",
+        `${who(k)} · ${ref("unit", k.unitType)} · ${ref("weapon", k.weaponType)} ${arrow} ${ref("unit", k.targetType)}`,
+        `${Math.round(k.rangeM).toLocaleString()} m between shooter and target at the moment of the kill`
+      )
+    );
+  }
+
+  if (r.highestKill) {
+    const k = r.highestKill;
+    cards.push(
+      recordCard(
+        "Highest kill",
+        Math.round(k.altitudeM * M_TO_FT).toLocaleString(),
+        "ft",
+        `${who(k)} · ${ref("unit", k.unitType)} ${arrow} ${ref("unit", k.targetType)}`,
+        `${Math.round(k.altitudeM).toLocaleString()} m`
+      )
+    );
+  }
+
+  if (r.deadliest) {
+    const w = r.deadliest;
+    cards.push(
+      recordCard(
+        "Deadliest store",
+        w.killsPerShot.toFixed(2),
+        "kills/shot",
+        `${ref("weapon", w.weaponType)} — ${w.kills} kills from ${w.shots} shots`,
+        "Weapons with at least ten shots, so one lucky round cannot take it"
+      )
+    );
+  }
+
+  el("records").innerHTML = `<dl class="records">${cards.join("")}</dl>` +
+    `<p class="chart-scale">
+       Longest kill is the separation between shooter and target when the target died, not the launch
+       range — DCS puts no target on a shot event, and a missile with a minute of flight leaves the
+       shooter somewhere else by the time it arrives.
+     </p>`;
 }
 
 // Scenery. Deliberately light, deliberately apart from the real figures, and

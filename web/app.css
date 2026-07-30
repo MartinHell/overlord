@@ -146,7 +146,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.controls { display: flex; align-items: center; gap: 0.6rem; margin-left: auto; }
+/* Wraps. The row is a search box, a theme button, a live toggle and a status
+   that grows once it says "Updated 19:09:45"; without this it runs off the
+   right edge on a phone and takes the whole page's horizontal scroll with it. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
 
 input[type="search"] {
   width: 16rem;
@@ -597,12 +606,19 @@ table.grid {
 
 /* Names that open a reference card. Underline only on hover, so a table of
    them does not turn into a wall of blue-ish links. */
+/* Dotted while at rest, solid on hover.
+ *
+ * This was transparent until hover, which looked tidier and meant nothing on
+ * screen suggested that every aircraft and weapon name opens a reference card.
+ * A feature nobody can find is not a quiet feature, it is an absent one, so the
+ * affordance is back -- dotted rather than a link underline, so a table of them
+ * still reads as a table. */
 .ref {
   cursor: pointer;
-  border-bottom: 1px solid transparent;
+  border-bottom: 1px dotted var(--text-faint);
   transition: border-color 120ms;
 }
-.ref:hover { border-bottom-color: var(--line-strong); }
+.ref:hover { border-bottom: 1px solid var(--text); }
 
 /* ---- reference card ---- */
 
@@ -767,3 +783,50 @@ footer {
   margin-left: 0.35rem;
   font-size: 0.75em;
 }
+
+/* ---- records ---- */
+
+.records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* Hairline gaps rather than separate cards: four boxes with their own borders
+   read as four things, and these are four facets of one mission. */
+.record {
+  padding: 0.9rem 1rem 1rem;
+  background: var(--surface);
+}
+.record dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.record dd {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  margin: 0.3rem 0 0;
+}
+.record dd b {
+  font: 600 1.75rem/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.record dd .unit { color: var(--text-dim); font-size: 0.8125rem; }
+.record p {
+  margin: 0.5rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.record p .ref, .record p .pref { color: var(--text); }
+.record p .to { color: var(--text-faint); padding: 0 0.1rem; }

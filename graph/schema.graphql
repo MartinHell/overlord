@@ -226,6 +226,50 @@ type Matchup {
 }
 
 """
+The standout moments of a mission.
+
+Everything else here is an aggregate, which says how a mission went but never
+what happened in it. These are single events, named and timed.
+"""
+type Records {
+    "The first real kill of the mission. Scenery does not count."
+    firstBlood: KillRecord
+    "The kill with the greatest separation between shooter and target."
+    longestKill: KillRecord
+    "The kill made from the greatest altitude."
+    highestKill: KillRecord
+    "The weapon that converted shots into kills best, over at least ten shots."
+    deadliest: WeaponRecord
+}
+
+"One kill, with enough around it to tell the story."
+type KillRecord {
+    playerID: ID!
+    playerName: String!
+    unitType: String
+    weaponType: String
+    targetType: String
+    missionTime: Float!
+    """
+    How far apart shooter and target were when the target died, in metres. Not
+    the launch range, which DCS does not make recoverable: a shot event carries
+    no target, and a long-flying missile leaves the shooter somewhere else by
+    the time it arrives.
+    """
+    rangeM: Float!
+    "The shooter's altitude at the moment of the kill, in metres."
+    altitudeM: Float!
+}
+
+"The most efficient weapon, over a minimum sample."
+type WeaponRecord {
+    weaponType: String!
+    shots: Int!
+    kills: Int!
+    killsPerShot: Float!
+}
+
+"""
 What got caught in the blast: map scenery, counted apart from anything that
 shoots back. Excluded from every hit and kill figure on purpose -- a bomb
 catching a wood is not marksmanship -- but far too good to throw away.
@@ -352,6 +396,8 @@ type Query {
     playerActivity: [PlayerActivity!]!
     "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."
     playerProfile(playerID: ID!, unitType: String): PlayerProfile
+    "Standout moments: first blood, longest and highest kills, most efficient weapon."
+    records: Records
     "Scenery caught in the blast. Omit playerID for the whole mission, including the majority DCS reports with no initiator."
     collateral(playerID: ID): Collateral
     "Recent graded landings, newest first."

@@ -158,6 +158,46 @@ type Matchup struct {
 	Kills      int
 }
 
+// Records are the standout moments of the mission.
+//
+// Everything else here is an aggregate -- totals, averages, ratios -- which
+// says how a mission went but never what happened in it. These are single
+// events, named and timed, because that is what someone actually wants to
+// point at afterwards.
+type Records struct {
+	FirstBlood  *KillRecord
+	LongestKill *KillRecord
+	HighestKill *KillRecord
+	Deadliest   *WeaponRecord
+}
+
+// KillRecord is one kill, with enough around it to tell the story.
+type KillRecord struct {
+	PlayerID    uint
+	PlayerName  string
+	UnitType    string
+	WeaponType  string
+	TargetType  string
+	MissionTime float64
+	// RangeM is how far apart shooter and target were when the target died.
+	//
+	// Not the launch range, which is not recoverable: DCS gives a position on
+	// the shot event but no target, and by the time the kill lands the shooter
+	// has flown on. A Phoenix trucking along for a minute makes those two
+	// numbers very different, so this is labelled for what it is.
+	RangeM float64
+	// AltitudeM is the shooter's altitude at the moment of the kill.
+	AltitudeM float64
+}
+
+// WeaponRecord is the most efficient weapon, over a minimum sample.
+type WeaponRecord struct {
+	WeaponType   string
+	Shots        int
+	Kills        int
+	KillsPerShot float64
+}
+
 // Collateral is what got caught in the blast: map scenery, counted separately
 // from anything that shoots back.
 //

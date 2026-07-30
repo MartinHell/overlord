@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
@@ -601,6 +602,152 @@ func whereUnitType(unitType string) func(*gorm.DB) *gorm.DB {
 		}
 		return q.Where("units.type = ?", unitType)
 	}
+}
+
+// killRecordRow is a kill with everything needed to describe it.
+type killRecordRow struct {
+	PlayerID     uint
+	PlayerName   string
+	UnitType     string
+	WeaponType   string
+	TargetType   string
+	MissionTime  float64
+	InitiatorLat float64
+	InitiatorLon float64
+	InitiatorAlt float64
+	TargetLat    float64
+	TargetLon    float64
+}
+
+// killRecords selects real kills -- something that could shoot back -- with the
+// names attached. Scenery is excluded, so "first blood" is never a shrub.
+func killRecords() *gorm.DB {
+	return initializers.DB.Model(&models.Event{}).
+		Select(`events.player_id AS player_id,
+			players.player_name AS player_name,
+			units.type AS unit_type,
+			weapons.type AS weapon_type,
+			tunits.type AS target_type,
+			events.mission_time AS mission_time,
+			events.initiator_lat AS initiator_lat,
+			events.initiator_lon AS initiator_lon,
+			events.initiator_alt AS initiator_alt,
+			events.target_lat AS target_lat,
+			events.target_lon AS target_lon`).
+		Joins("LEFT JOIN players ON players.player_id = events.player_id").
+		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
+		Joins("LEFT JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
+		Where("events.event = ? AND targets.kind <> ?", "kill", models.ObjectKindScenery)
+}
+
+func toKillRecord(r killRecordRow, rangeM float64) *models.KillRecord {
+	return &models.KillRecord{
+		PlayerID:    r.PlayerID,
+		PlayerName:  r.PlayerName,
+		UnitType:    r.UnitType,
+		WeaponType:  r.WeaponType,
+		TargetType:  r.TargetType,
+		MissionTime: r.MissionTime,
+		RangeM:      rangeM,
+		AltitudeM:   r.InitiatorAlt,
+	}
+}
+
+// GetRecords finds the standout moments: the first kill, the longest, the
+// highest, and the weapon that converted best.
+func GetRecords() (*models.Records, error) {
+	out := &models.Records{}
+
+	// First blood. mission_time > 0 skips rows recorded before the clock was
+	// captured, which would otherwise always win.
+	var first killRecordRow
+	err := killRecords().
+		Where("events.mission_time > 0").
+		Order("events.mission_time ASC").
+		Limit(1).
+		Scan(&first).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to find first blood: %v", err)
+		return nil, err
+	}
+	if first.MissionTime > 0 {
+		out.FirstBlood = toKillRecord(first, 0)
+	}
+
+	// Highest kill, by the shooter's altitude.
+	var highest killRecordRow
+	if err := killRecords().
+		Where("events.initiator_alt > 0").
+		Order("events.initiator_alt DESC").
+		Limit(1).
+		Scan(&highest).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find highest kill: %v", err)
+		return nil, err
+	}
+	if highest.InitiatorAlt > 0 {
+		out.HighestKill = toKillRecord(highest, 0)
+	}
+
+	// Longest kill. Great-circle distance is not expressible portably in SQL,
+	// so the candidates come back and the maximum is found here. Only kills
+	// carrying both positions qualify, which is roughly half of them.
+	var candidates []killRecordRow
+	if err := killRecords().
+		Where("events.initiator_lat <> 0 AND events.target_lat <> 0").
+		Scan(&candidates).Error; err != nil {
+		logs.Sugar.Errorf("Failed to load kill geometry: %v", err)
+		return nil, err
+	}
+
+	best := 0.0
+	for _, c := range candidates {
+		d := haversineM(c.InitiatorLat, c.InitiatorLon, c.TargetLat, c.TargetLon)
+		if d > best {
+			best = d
+			out.LongestKill = toKillRecord(c, d)
+		}
+	}
+
+	// Most efficient weapon, over a sample big enough to mean something. One
+	// lucky shot would otherwise take this every time.
+	weapons, err := GetWeaponEffectiveness()
+	if err != nil {
+		return nil, err
+	}
+	const minShots = 10
+	for _, w := range weapons {
+		if w.Shots < minShots || w.Kills == 0 {
+			continue
+		}
+		if out.Deadliest == nil || w.KillsPerShot() > out.Deadliest.KillsPerShot {
+			out.Deadliest = &models.WeaponRecord{
+				WeaponType:   w.WeaponType,
+				Shots:        w.Shots,
+				Kills:        w.Kills,
+				KillsPerShot: w.KillsPerShot(),
+			}
+		}
+	}
+
+	return out, nil
+}
+
+// haversineM is great-circle distance in metres. DCS positions are degrees on
+// a spherical earth, and at engagement ranges the difference between this and
+// a proper ellipsoid is centimetres.
+func haversineM(lat1, lon1, lat2, lon2 float64) float64 {
+	const earthRadiusM = 6371000.0
+
+	rad := math.Pi / 180
+	dLat := (lat2 - lat1) * rad
+	dLon := (lon2 - lon1) * rad
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dLon/2)*math.Sin(dLon/2)
+
+	return earthRadiusM * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 }
 
 // GetCollateral counts what was hit that was never a threat: trees, walls,
