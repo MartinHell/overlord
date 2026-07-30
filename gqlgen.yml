@@ -88,6 +88,9 @@ models:
   SceneryCount:
     model:
       - github.com/MartinHell/overlord/models.SceneryCount
+  KillPoint:
+    model:
+      - github.com/MartinHell/overlord/models.KillPoint
   TimelineBucket:
     model:
       - github.com/MartinHell/overlord/models.TimelineBucket

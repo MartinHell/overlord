@@ -189,6 +189,18 @@ type PlayerProfile {
     bucketSeconds: Int!
     "Activity across the mission clock."
     timeline: [TimelineBucket!]!
+
+    "Where the kills happened. Roughly half of kills carry no position and are absent here."
+    killPoints: [KillPoint!]!
+}
+
+"One kill with a place: the victim's position where reported, the shooter's otherwise."
+type KillPoint {
+    lat: Float!
+    lon: Float!
+    targetType: String
+    weaponType: String
+    missionTime: Float!
 }
 
 "One slice of the mission clock."

@@ -599,6 +599,7 @@ const PLAYER_QUERY = `query($id: ID!, $unitType: String, $m: ID) { playerProfile
   killedBy { unitType targetType kills }
   landingGrades { unitType place grade missionTime }
   bucketSeconds timeline { t sorties kills losses shots }
+  killPoints { lat lon targetType weaponType missionTime }
 } }`;
 
 // Mission-clock activity, drawn as inline SVG. No chart library: this is one
@@ -850,6 +851,64 @@ function collateralPanel(c, scope) {
     </p>`;
 }
 
+// The kill map. Leaflet owns the pan and zoom; this owns one layer of dots.
+//
+// The map object is created once and kept: recreating it on every refresh
+// resets the view the reader has panned to, so refreshes only swap the dot
+// layer, and the auto-fit runs only on the first draw with data.
+let killMap = null;
+let killLayer = null;
+let killMapFitted = false;
+
+function drawKillMap(points) {
+  const host = el("killmap");
+  if (!host) return;
+
+  if (typeof L === "undefined") {
+    host.innerHTML = `<p class="none">The map library could not load — offline? The dots will be back with the network.</p>`;
+    return;
+  }
+
+  if (!killMap) {
+    killMap = L.map(host, { zoomControl: true, attributionControl: true, worldCopyJump: true });
+    killMap.setView([42.5, 42.0], 7);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 15,
+      className: "map-tiles",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(killMap);
+    killLayer = L.layerGroup().addTo(killMap);
+  }
+
+  killLayer.clearLayers();
+
+  const pts = points || [];
+  if (!pts.length) {
+    host.classList.add("map-empty");
+    return;
+  }
+  host.classList.remove("map-empty");
+
+  for (const p of pts) {
+    L.circleMarker([p.lat, p.lon], {
+      radius: 5,
+      weight: 1,
+      color: "#ffffff",
+      fillColor: "#c0382e",
+      fillOpacity: 0.55,
+    })
+      .bindTooltip(
+        `${esc(unitName(p.targetType || ""))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
+      )
+      .addTo(killLayer);
+  }
+
+  if (!killMapFitted) {
+    killMap.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.2));
+    killMapFitted = true;
+  }
+}
+
 // The badge shelf. Earned badges are plain statements; locked ones show their
 // progress bar and keep their story quiet. Deliberately career-wide whatever
 // the scope toggle says -- a badge is something you keep.
@@ -943,6 +1002,7 @@ function drawPlayer() {
   el("player-timeline").innerHTML = timelineChart(p.timeline, p.bucketSeconds);
   el("player-collateral").innerHTML = collateralPanel(state.collateral, "player");
   drawBadges(state.badges);
+  drawKillMap(p.killPoints);
 
   const matchHay = (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)]);
 

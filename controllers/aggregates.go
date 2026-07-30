@@ -677,6 +677,33 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 		return nil, err
 	}
 
+	// Where the kills happened. The victim's position wins because that is
+	// where the thing died; the shooter's position is the fallback.
+	var points []models.KillPoint
+	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
+		Select(`CASE WHEN events.target_lat <> 0 THEN events.target_lat ELSE events.initiator_lat END AS lat,
+			CASE WHEN events.target_lat <> 0 THEN events.target_lon ELSE events.initiator_lon END AS lon,
+			tunits.type AS target_type,
+			weapons.type AS weapon_type,
+			events.mission_time AS mission_time`).
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
+		Joins("LEFT JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where(`events.event = 'kill' AND events.player_id = ? AND targets.kind <> ?
+			AND (events.target_lat <> 0 OR events.initiator_lat <> 0)`, playerID, models.ObjectKindScenery).
+		Scopes(whereUnitType(unitType)).
+		Order("events.id DESC").
+		Limit(500).
+		Scan(&points).Error; err != nil {
+		logs.Sugar.Errorf("Failed to load kill points for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for i := range points {
+		view.KillPoints = append(view.KillPoints, &points[i])
+	}
+
 	for _, b := range buckets {
 		view.Timeline = append(view.Timeline, &models.TimelineBucket{
 			T:       float64(b.Bucket * bucket),

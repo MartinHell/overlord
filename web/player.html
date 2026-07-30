@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilot — Overlord</title>
 <link rel="stylesheet" href="/app.css">
+<!-- Leaflet, the one external dependency in the dashboard. Pinned and
+     integrity-checked; the basemap tiles are a runtime network dependency
+     either way, so the library rides the same wire. If it fails to load the
+     map section degrades to a note and everything else works. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
 <script>
   // Same pre-paint theme resolution as the dashboard; see index.html.
   (function () {
@@ -60,6 +68,15 @@
   <section class="card-panel">
     <div class="phead"><h2>Across the mission</h2></div>
     <div id="player-timeline"></div>
+  </section>
+
+  <section class="card-panel" id="p-map-panel">
+    <div class="phead"><h2>Where the kills happened</h2></div>
+    <p class="note">
+      Each dot is a kill — the victim's reported position, or the shooter's when that is all DCS gave.
+      Roughly half of kills carry no position at all and cannot be shown.
+    </p>
+    <div id="killmap"></div>
   </section>
 
   <div class="split">

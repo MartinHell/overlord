@@ -95,6 +95,21 @@ type PlayerProfileView struct {
 	// span so the shape reads the same for a short mission and a long one.
 	BucketSeconds int
 	Timeline      []*TimelineBucket
+
+	// KillPoints are where this player's kills happened, for the map. The
+	// victim's position where DCS reported one, the shooter's otherwise, and
+	// absent entirely when it reported neither -- which is roughly half of
+	// kills, a caveat the map has to state rather than hide.
+	KillPoints []*KillPoint
+}
+
+// KillPoint is one kill with a place.
+type KillPoint struct {
+	Lat         float64
+	Lon         float64
+	TargetType  string
+	WeaponType  string
+	MissionTime float64
 }
 
 // TimelineBucket is one slice of the mission clock.
