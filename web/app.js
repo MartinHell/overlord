@@ -214,23 +214,26 @@ function render(table, columns, rows, renderRow) {
     return;
   }
 
+  // The control is a real <button> inside the <th>, not a click handler on the
+  // header cell. A bare th is not focusable and takes no keypress, so sorting
+  // used to be reachable with a mouse and by no other means.
   const active = state.sort[table];
   const head = columns
     .map((c) => {
       if (!c.key) return `<th${c.num ? ' class="num"' : ""}>${esc(c.label)}</th>`;
       const on = active.key === c.key;
-      const car = on ? `<span class="car">${active.dir < 0 ? "▼" : "▲"}</span>` : "";
-      return `<th data-sort="${c.key}"${
-        on ? ` aria-sort="${active.dir < 0 ? "descending" : "ascending"}"` : ""
-      }${c.num ? ' class="num"' : ""}>${esc(c.label)} ${car}</th>`;
+      const car = on ? `<span class="car" aria-hidden="true">${active.dir < 0 ? "▼" : "▲"}</span>` : "";
+      return `<th${on ? ` aria-sort="${active.dir < 0 ? "descending" : "ascending"}"` : ""}${
+        c.num ? ' class="num"' : ""
+      }><button type="button" class="sort" data-sort="${esc(c.key)}">${esc(c.label)}${car}</button></th>`;
     })
     .join("");
 
   node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${rows.map(renderRow).join("")}</tbody>`;
 
-  node.querySelectorAll("th[data-sort]").forEach((th) => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.sort;
+  node.querySelectorAll("button[data-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.sort;
       const s = state.sort[table];
       s.dir = s.key === key ? -s.dir : -1;
       s.key = key;
@@ -415,7 +418,7 @@ function drawLog(connection) {
     (n) => {
       const side =
         n.coalition === "blue" || n.coalition === "red"
-          ? `<span class="flag flag-${n.coalition}"></span>`
+          ? `<span class="flag flag-${esc(n.coalition)}"></span>`
           : `<span class="flag"></span>`;
 
       // Callsign is what a pilot is actually called on the radio; fall back
@@ -588,8 +591,7 @@ async function openCard(kind, type) {
   el("card-name").textContent = kind === "unit" ? unitName(type) : weaponName(type);
   el("card-sub").textContent = type;
   el("card-body").innerHTML = `<p class="card-blurb">Loading…</p>`;
-  wrap.hidden = false;
-  el("card-close").focus();
+  if (!wrap.open) wrap.showModal();
   location.hash = `#/${kind}/${encodeURIComponent(type)}`;
 
   try {
@@ -653,10 +655,21 @@ async function openCard(kind, type) {
   }
 }
 
-function closeCard() {
-  el("card").hidden = true;
+function clearDeepLink() {
   if (location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname);
 }
+
+function closeCard() {
+  const card = el("card");
+  if (card.open) card.close();
+  clearDeepLink();
+}
+
+// Escape dismisses a modal dialog without any handler of ours, and that path
+// does not run closeCard, so the deep link is dropped here as well. Belt and
+// braces on purpose: both routes are idempotent, and leaving it to the close
+// event alone would strand the URL on a card that is no longer open.
+el("card").addEventListener("close", clearDeepLink);
 
 // One listener for the whole document, so it survives every table redraw.
 document.addEventListener("click", (e) => {
@@ -665,11 +678,15 @@ document.addEventListener("click", (e) => {
     openCard(r.dataset.ref, r.dataset.type);
     return;
   }
+  // A modal dialog fills the viewport for hit-testing purposes, so a click on
+  // the backdrop lands on the dialog element itself rather than on anything
+  // inside it. That is the signal to close.
   if (e.target.id === "card-close" || e.target.id === "card") closeCard();
 });
 
+// Escape and the close button are the dialog's own job now. This only covers
+// activating a reference name, which is a span rather than a button.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !el("card").hidden) closeCard();
   const r = document.activeElement?.closest?.(".ref");
   if (r && (e.key === "Enter" || e.key === " ")) {
     e.preventDefault();

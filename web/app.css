@@ -336,9 +336,23 @@ table.grid {
   white-space: nowrap;
   user-select: none;
 }
-.grid th[data-sort] { cursor: pointer; }
-.grid th[data-sort]:hover { color: var(--text); }
+/* The sort control is a button for keyboard reachability, styled back down to
+   look like the header text it replaced. */
+.grid th button.sort {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.grid th button.sort:hover { color: var(--text); background: none; }
 .grid th[aria-sort] { color: var(--text); }
+.grid th.num button.sort { justify-content: flex-end; width: 100%; }
 .grid th .car { font-size: 0.625rem; opacity: 0.7; }
 
 .grid td {
@@ -406,28 +420,27 @@ table.grid {
 
 /* ---- reference card ---- */
 
-.card-wrap {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 3rem 1rem;
-  background: var(--scrim);
-  backdrop-filter: blur(3px);
-  overflow-y: auto;
-}
-.card-wrap[hidden] { display: none; }
-
-.card {
-  width: min(720px, 100%);
+/* A native <dialog>. It is display:none until opened, so the sizing below only
+   ever applies to the open state and no [hidden] rule is needed. */
+dialog.card {
+  width: min(720px, 100% - 2rem);
+  max-width: none;
+  max-height: calc(100dvh - 6rem);
+  margin: 3rem auto;
   padding: 1.35rem 1.5rem 1.5rem;
+  overflow-y: auto;
   background: var(--surface);
+  color: var(--text);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow-lift);
 }
+/* Literal colours, not var(--scrim). ::backdrop only started inheriting custom
+   properties from its originating element recently and not at the same time in
+   every engine, so a var() here silently resolves to nothing in anything
+   slightly older and the page behind shows through unshaded. */
+dialog.card::backdrop { backdrop-filter: blur(3px); background: rgb(6 8 11 / 68%); }
+:root[data-theme="light"] dialog.card::backdrop { background: rgb(30 34 40 / 32%); }
 
 .card-head {
   display: flex;
