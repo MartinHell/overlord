@@ -229,7 +229,16 @@ function render(table, columns, rows, renderRow) {
     })
     .join("");
 
+  // Replacing innerHTML destroys whatever had focus inside this table, and the
+  // poll redraws every table every 15 seconds. Without this, tabbing to a sort
+  // header and pausing drops you back to the top of the document on the next
+  // refresh. Remember the column and restore it afterwards.
+  const held =
+    node.contains(document.activeElement) && document.activeElement.dataset.sort;
+
   node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${rows.map(renderRow).join("")}</tbody>`;
+
+  if (held) node.querySelector(`button[data-sort="${CSS.escape(held)}"]`)?.focus();
 
   node.querySelectorAll("button[data-sort]").forEach((btn) => {
     btn.addEventListener("click", () => {
