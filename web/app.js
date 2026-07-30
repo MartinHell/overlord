@@ -1634,11 +1634,24 @@ document.addEventListener("click", (e) => {
     openCard(r.dataset.ref, r.dataset.type);
     return;
   }
-  // A modal dialog fills the viewport for hit-testing purposes, so a click on
-  // the backdrop lands on the dialog element itself rather than on anything
-  // inside it. That is the signal to close.
-  if (e.target.id === "card-close" || e.target.id === "card") closeCard();
+  if (e.target.id === "card-close") closeCard();
 });
+
+// Clicking the backdrop closes the card: closedby="any" on the element makes
+// that native where supported. Elsewhere a backdrop click lands on the dialog
+// element itself for hit-testing purposes -- but so does a click on the
+// dialog's own padding, so the point has to be tested against the box before
+// it counts as a dismissal.
+if (!("closedBy" in HTMLDialogElement.prototype)) {
+  el("card").addEventListener("click", (e) => {
+    if (e.target !== e.currentTarget) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const onDialog =
+      r.top <= e.clientY && e.clientY <= r.bottom &&
+      r.left <= e.clientX && e.clientX <= r.right;
+    if (!onDialog) closeCard();
+  });
+}
 
 // Escape and the close button are the dialog's own job now. This only covers
 // activating a reference name, which is a span rather than a button.
@@ -1676,8 +1689,23 @@ const tick = PAGE === "player" ? loadPlayer : refresh;
 let timer = null;
 function schedule() {
   clearInterval(timer);
-  if (el("live").checked) timer = setInterval(tick, REFRESH_MS);
+  // Also covers a page loaded straight into a background tab, which the
+  // visibilitychange listener below never sees a transition for.
+  if (el("live").checked && !document.hidden) timer = setInterval(tick, REFRESH_MS);
 }
+
+// A dashboard lives in background tabs, and polling a page nobody can see
+// spends battery and server alike. Hiding the tab stops the clock; coming
+// back refreshes once so the numbers are current, then restarts it. Live
+// unchecked is the user's own freeze and stays frozen across the round trip.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearInterval(timer);
+  } else if (el("live").checked) {
+    tick();
+    schedule();
+  }
+});
 
 function chips(container, attr, onPick) {
   el(container).addEventListener("click", (e) => {
@@ -1747,6 +1775,11 @@ function applyTheme(mode) {
   void root.offsetHeight;
   setTimeout(() => root.classList.remove("theme-switching"), 0);
 
+  // Keep the meta declaration in step, so the browser paints native surfaces
+  // for the pinned theme rather than the light-dark pair declared for load.
+  const scheme = document.querySelector('meta[name="color-scheme"]');
+  if (scheme) scheme.content = mode;
+
   // The button names where you are going, not where you are.
   themeBtn.textContent = mode === "dark" ? "☀ Light" : "☾ Dark";
   themeBtn.setAttribute(
@@ -1783,6 +1816,7 @@ system.addEventListener("change", (e) => {
 // timestamp reads as a log line. Stops counting the moment a fetch fails,
 // since the down state owns the text then.
 setInterval(() => {
+  if (document.hidden) return;
   const link = el("link");
   if (!state.lastSync || !link.classList.contains("up")) return;
   const age = Math.round((Date.now() - state.lastSync) / 1000);
