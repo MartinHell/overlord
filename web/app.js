@@ -91,10 +91,14 @@ function playerLabel(name) {
   return side === "unknown" ? "Unattributed AI" : `${side[0].toUpperCase()}${side.slice(1)} AI`;
 }
 
-// A name that opens a player page.
+// A link to a pilot's page.
+//
+// A real anchor with a real href, not a span with a click handler: /player/2 is
+// a page of its own, so it has to survive being copied, opened in a new tab,
+// bookmarked and shared. That is the whole point of it not being a dialog.
 function pref(id, name) {
   if (!id) return esc(playerLabel(name));
-  return `<span class="pref" data-player="${esc(id)}" role="button" tabindex="0">${esc(playerLabel(name))}</span>`;
+  return `<a class="pref" href="/player/${encodeURIComponent(id)}">${esc(playerLabel(name))}</a>`;
 }
 
 // --- api -------------------------------------------------------------------
@@ -521,16 +525,6 @@ async function refresh() {
     state.data = summary;
     state.log = log;
     draw();
-
-    // The player page is live too, otherwise a pilot's own page is the one
-    // place in the app that goes stale while they are flying.
-    if (state.player) {
-      const p = (await gqlVars(PLAYER_QUERY, { id: state.player.playerID })).playerProfile;
-      if (p) {
-        state.player = p;
-        drawPlayer();
-      }
-    }
     link.textContent = `Updated ${new Date().toLocaleTimeString([], { hour12: false })}`;
     link.className = "status up";
     el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refreshing every ${REFRESH_MS / 1000}s`;
@@ -703,32 +697,50 @@ function drawPlayer() {
   );
 }
 
-async function openPlayer(id) {
-  el("dash").hidden = true;
-  el("player-view").hidden = false;
-  el("player-name").textContent = "Loading…";
-  el("player-tags").innerHTML = "";
-  el("player-headline").innerHTML = "";
-  el("player-note").textContent = "";
-  location.hash = `#/player/${encodeURIComponent(id)}`;
-  window.scrollTo(0, 0);
+// The id is in the path, since this is a page rather than a view: /player/2.
+function playerIDFromPath() {
+  const m = location.pathname.match(/^\/player\/([^/]+)\/?$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+async function loadPlayer() {
+  const id = playerIDFromPath();
+  if (!id) return;
 
   try {
-    const p = (await gqlVars(PLAYER_QUERY, { id })).playerProfile;
-    if (!p) throw new Error("no such player");
-    state.player = p;
+    // The reference cards need display names, which the dashboard query
+    // normally fills in. This page has to ask for them itself.
+    const [profile, lookup] = await Promise.all([
+      gqlVars(PLAYER_QUERY, { id }),
+      gql(`{ units { type displayName } weapons { type displayName } }`),
+    ]);
+
+    for (const u of lookup.units || []) names.unit.set(u.type, u.displayName);
+    for (const w of lookup.weapons || []) names.weapon.set(w.type, w.displayName);
+
+    // The query succeeding and there being no such pilot are different things.
+    // Reporting the second as "Offline" blames the connection for a perfectly
+    // good answer, and sends you looking for a fault that is not there.
+    el("link").textContent = `Updated ${new Date().toLocaleTimeString([], { hour12: false })}`;
+    el("link").className = "status up";
+    el("foot").textContent = `${API_URL} · refreshing every ${REFRESH_MS / 1000}s`;
+
+    if (!profile.playerProfile) {
+      document.title = "Unknown pilot — Overlord";
+      el("player-name").textContent = "No such pilot";
+      el("player-note").textContent = `Nothing is recorded against player ${id}.`;
+      return;
+    }
+
+    state.player = profile.playerProfile;
+    document.title = `${playerLabel(state.player.playerName)} — Overlord`;
     drawPlayer();
   } catch (err) {
     el("player-name").textContent = "Could not load this pilot";
     el("player-note").textContent = err.message;
+    el("link").textContent = "Offline";
+    el("link").className = "status down";
   }
-}
-
-function closePlayer() {
-  state.player = null;
-  el("player-view").hidden = true;
-  el("dash").hidden = false;
-  if (location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname);
 }
 
 // --- reference card --------------------------------------------------------
@@ -905,19 +917,10 @@ el("card").addEventListener("close", clearDeepLink);
 
 // One listener for the whole document, so it survives every table redraw.
 document.addEventListener("click", (e) => {
-  const p = e.target.closest(".pref");
-  if (p) {
-    closeCard();
-    openPlayer(p.dataset.player);
-    return;
-  }
+  // Pilot names are ordinary links now, so they are left to the browser.
   const r = e.target.closest(".ref");
   if (r) {
     openCard(r.dataset.ref, r.dataset.type);
-    return;
-  }
-  if (e.target.id === "player-back") {
-    closePlayer();
     return;
   }
   // A modal dialog fills the viewport for hit-testing purposes, so a click on
@@ -930,13 +933,6 @@ document.addEventListener("click", (e) => {
 // activating a reference name, which is a span rather than a button.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter" && e.key !== " ") return;
-  const p = document.activeElement?.closest?.(".pref");
-  if (p) {
-    e.preventDefault();
-    closeCard();
-    openPlayer(p.dataset.player);
-    return;
-  }
   const r = document.activeElement?.closest?.(".ref");
   if (r) {
     e.preventDefault();
@@ -944,35 +940,32 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Deep links. #/unit/F-15C opens that reference card, #/player/2 opens a pilot
-// page. Anything else means neither, which is also what going back to a bare
-// URL has to do -- otherwise the browser back button leaves the player page up
-// with a dashboard URL.
+// Reference cards stay hash-addressed: they are an overlay on whichever page is
+// open, so #/unit/F-15C works on both. Pilots are pages and live in the path.
 function openFromHash() {
   const card = location.hash.match(/^#\/(unit|weapon)\/(.+)$/);
   if (card) {
     openCard(card[1], decodeURIComponent(card[2]));
     return;
   }
-
-  const player = location.hash.match(/^#\/player\/(.+)$/);
-  if (player) {
-    const id = decodeURIComponent(player[1]);
-    if (state.player?.playerID !== id) openPlayer(id);
-    return;
-  }
-
   closeCard();
-  if (state.player) closePlayer();
 }
 window.addEventListener("hashchange", openFromHash);
 
 // --- wiring ----------------------------------------------------------------
 
+// One script serves both documents. Everything above is shared; what gets wired
+// up below depends on which page loaded it, because the dashboard's controls do
+// not exist on a pilot page and vice versa.
+const PAGE = document.body.dataset.page;
+
+// Whichever page this is, it polls the same way.
+const tick = PAGE === "player" ? loadPlayer : refresh;
+
 let timer = null;
 function schedule() {
   clearInterval(timer);
-  if (el("live").checked) timer = setInterval(refresh, REFRESH_MS);
+  if (el("live").checked) timer = setInterval(tick, REFRESH_MS);
 }
 
 function chips(container, attr, onPick) {
@@ -985,22 +978,24 @@ function chips(container, attr, onPick) {
   });
 }
 
-chips("weapon-class", "class", (v) => (state.weaponClass = v));
+if (PAGE === "dashboard") {
+  chips("weapon-class", "class", (v) => (state.weaponClass = v));
 
-// These two change what the query asks for, so they refetch rather than redraw.
-chips("log-filter", "ev", (v) => {
-  state.logGroup = v;
-  refreshLog();
-});
-chips("log-side", "side", (v) => {
-  state.logSide = v;
-  refreshLog();
-});
+  // These two change what the query asks for, so they refetch rather than redraw.
+  chips("log-filter", "ev", (v) => {
+    state.logGroup = v;
+    refreshLog();
+  });
+  chips("log-side", "side", (v) => {
+    state.logSide = v;
+    refreshLog();
+  });
 
-el("q").addEventListener("input", (e) => {
-  state.query = e.target.value.trim().toLowerCase();
-  draw();
-});
+  el("q").addEventListener("input", (e) => {
+    state.query = e.target.value.trim().toLowerCase();
+    draw();
+  });
+}
 
 el("live").addEventListener("change", schedule);
 
@@ -1058,5 +1053,5 @@ system.addEventListener("change", (e) => {
   if (!saved) applyTheme(e.matches ? "dark" : "light");
 });
 
-refresh().then(openFromHash);
+tick().then(openFromHash);
 schedule();

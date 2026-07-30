@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"io"
 	"net/http"
 	"os"
 
@@ -48,6 +49,25 @@ func GraphQLHandler() {
 		w.Header().Set("Cache-Control", "no-cache")
 		dashboard.ServeHTTP(w, r)
 	}))
+
+	// A pilot's record is a page at /player/<id>, so it has to be served on a
+	// refresh, a bookmark or a pasted link and not only when the dashboard
+	// happens to navigate there. The id is read from the path by the client;
+	// the server's job is just to hand over the document.
+	mux.HandleFunc("/player/", func(w http.ResponseWriter, r *http.Request) {
+		page, err := web.FS().Open("player.html")
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		defer func() { _ = page.Close() }()
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		if _, err := io.Copy(w, page); err != nil {
+			logs.Sugar.Errorf("Failed to serve player page: %v", err)
+		}
+	})
 
 	// The playground moves off / now that the dashboard lives there. It stays
 	// out of production entirely: it is an unauthenticated query console.

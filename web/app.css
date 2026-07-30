@@ -268,16 +268,16 @@ main {
 
 /* ---- player page ---- */
 
-.crumb { margin: 0 0 0.25rem; }
+.brand a { text-decoration: none; }
+.brand a:hover { color: var(--text); }
 
-.link-btn {
-  padding: 0;
-  background: none;
-  border: 0;
+.link-a {
   color: var(--text-dim);
   font-size: 0.8125rem;
+  text-decoration: none;
+  white-space: nowrap;
 }
-.link-btn:hover { background: none; color: var(--text); }
+.link-a:hover { color: var(--text); }
 
 .player-id {
   display: flex;
@@ -336,7 +336,8 @@ main {
 /* Names that open a player page, distinguished from reference names only by
    what they do -- both are quiet until hovered. */
 .pref {
-  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 120ms;
 }
