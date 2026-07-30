@@ -287,6 +287,210 @@ func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
 	return result, nil
 }
 
+// GetPlayerProfile assembles everything recorded about one player.
+//
+// Works for the synthetic AI players as well as humans, since those are
+// ordinary player rows: asking for the blue AI gives that whole side's record
+// in the same shape as a person's.
+//
+// Several queries rather than one. They group by different things -- airframe,
+// weapon, matchup -- so a single statement would need either a join per
+// dimension, multiplying rows, or a window function, which is not portable
+// between SQLite and Postgres. Each is a grouped aggregate over an indexed
+// player_id, not a scan into Go.
+func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
+	var player models.Player
+	if err := player.GetPlayerByPlayerID(playerID); err != nil {
+		logs.Sugar.Errorf("Failed to load player %d: %v", playerID, err)
+		return nil, nil
+	}
+
+	name := player.GetPlayerName()
+	view := &models.PlayerProfileView{
+		PlayerID:   playerID,
+		PlayerName: name,
+		IsAI:       models.IsAIPlayerName(name),
+	}
+
+	db := initializers.DB
+
+	// Totals. Hits and kills exclude scenery for the same reason as
+	// GetWeaponEffectiveness: DCS reports a blast catching a tree as a hit, and
+	// counting those would flatter anything with a warhead.
+	var totals struct {
+		Sorties, Landings, Crashes, Ejections, Deaths int
+		Shots, Hits, Kills, Teamkills                 int
+		FirstSeen, LastSeen                           float64
+	}
+	err := db.Model(&models.Event{}).
+		Select(`SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
+			SUM(CASE WHEN events.event IN ('land','runway_touch') THEN 1 ELSE 0 END) AS landings,
+			SUM(CASE WHEN events.event = 'crash' THEN 1 ELSE 0 END) AS crashes,
+			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections,
+			SUM(CASE WHEN events.event = 'pilot_dead' THEN 1 ELSE 0 END) AS deaths,
+			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
+			SUM(CASE WHEN events.event = 'hit'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event = 'kill' AND events.coalition <> '' AND events.coalition <> 'unknown'
+				AND events.target_coalition = events.coalition THEN 1 ELSE 0 END) AS teamkills,
+			MIN(events.mission_time) AS first_seen,
+			MAX(events.mission_time) AS last_seen`).
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.player_id = ?", playerID).
+		Scan(&totals).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to aggregate totals for player %d: %v", playerID, err)
+		return nil, err
+	}
+
+	view.Sorties, view.Landings = totals.Sorties, totals.Landings
+	view.Crashes, view.Ejections, view.Deaths = totals.Crashes, totals.Ejections, totals.Deaths
+	view.Shots, view.Hits, view.Kills = totals.Shots, totals.Hits, totals.Kills
+	view.Teamkills = totals.Teamkills
+	view.FirstSeen, view.LastSeen = totals.FirstSeen, totals.LastSeen
+
+	// Sides flown, busiest first.
+	var sides []struct {
+		Coalition string
+		Total     int
+	}
+	if err := db.Model(&models.Event{}).
+		Select("events.coalition AS coalition, COUNT(*) AS total").
+		Where("events.player_id = ? AND events.coalition <> '' AND events.coalition <> 'unknown'", playerID).
+		Group("events.coalition").
+		Order("total DESC").
+		Scan(&sides).Error; err != nil {
+		logs.Sugar.Errorf("Failed to list coalitions for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for _, s := range sides {
+		view.Coalitions = append(view.Coalitions, s.Coalition)
+	}
+
+	// Per airframe.
+	var aircraft []models.PlayerAircraftStats
+	if err := db.Model(&models.Event{}).
+		Select(`units.type AS unit_type,
+			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
+			SUM(CASE WHEN events.event IN ('land','runway_touch') THEN 1 ELSE 0 END) AS landings,
+			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
+			SUM(CASE WHEN events.event = 'hit'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event IN ('crash','dead','unit_lost','pilot_dead') THEN 1 ELSE 0 END) AS losses,
+			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections`).
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.player_id = ? AND events.initiator_kind = ?", playerID, models.ObjectKindUnit).
+		Group("units.type").
+		Order("sorties DESC, kills DESC, units.type").
+		Scan(&aircraft).Error; err != nil {
+		logs.Sugar.Errorf("Failed to aggregate aircraft for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for i := range aircraft {
+		view.Aircraft = append(view.Aircraft, &aircraft[i])
+	}
+
+	// Per weapon.
+	var weapons []models.WeaponEffectiveness
+	if err := db.Model(&models.Event{}).
+		Select(`weapons.type AS weapon_type,
+			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
+			SUM(CASE WHEN events.event = 'hit'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills`).
+		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.player_id = ?", playerID).
+		Group("weapons.type").
+		Order("shots DESC, kills DESC, weapons.type").
+		Scan(&weapons).Error; err != nil {
+		logs.Sugar.Errorf("Failed to aggregate weapons for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for i := range weapons {
+		view.Weapons = append(view.Weapons, &weapons[i])
+	}
+
+	// Matchups: what this player killed, by the airframe they were flying.
+	var matchups []models.Matchup
+	if err := db.Model(&models.Event{}).
+		Select("units.type AS unit_type, tunits.type AS target_type, COUNT(*) AS kills").
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
+		Where("events.event = ? AND events.player_id = ? AND targets.kind <> ?",
+			"kill", playerID, models.ObjectKindScenery).
+		Group("units.type, tunits.type").
+		Order("kills DESC, units.type, tunits.type").
+		Scan(&matchups).Error; err != nil {
+		logs.Sugar.Errorf("Failed to aggregate matchups for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for i := range matchups {
+		view.Matchups = append(view.Matchups, &matchups[i])
+	}
+
+	// The reverse: what killed this player.
+	//
+	// Target rows are deduplicated by type and carry no player, so there is no
+	// foreign key to follow back. What does identify the victim is the DCS unit
+	// name on the kill event, which is the same name that appears as the
+	// initiator on that player's own events. Matching on it is therefore exact
+	// within a mission; across missions a reused slot name could in principle
+	// be credited to the wrong player.
+	playerUnits := db.Model(&models.Event{}).
+		Select("DISTINCT events.initiator_name").
+		Where("events.player_id = ? AND events.initiator_name <> ?", playerID, "")
+
+	var killedBy []models.Matchup
+	if err := db.Model(&models.Event{}).
+		Select("tunits.type AS unit_type, units.type AS target_type, COUNT(*) AS kills").
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where("events.event = ? AND events.player_id <> ? AND events.target_name IN (?)",
+			"kill", playerID, playerUnits).
+		Group("tunits.type, units.type").
+		Order("kills DESC, tunits.type, units.type").
+		Scan(&killedBy).Error; err != nil {
+		logs.Sugar.Errorf("Failed to aggregate deaths for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for i := range killedBy {
+		view.KilledBy = append(view.KilledBy, &killedBy[i])
+		view.TimesKilled += killedBy[i].Kills
+	}
+
+	// Graded landings, newest first.
+	var grades []models.LandingGrade
+	if err := db.Model(&models.Event{}).
+		Select(`players.player_name AS player_name,
+			units.type AS unit_type,
+			events.place AS place,
+			events.comment AS grade,
+			events.mission_time AS mission_time`).
+		Joins("JOIN players ON players.player_id = events.player_id").
+		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where("events.event = ? AND events.player_id = ?", "landing_quality_mark", playerID).
+		Order("events.id DESC").
+		Limit(defaultPageSize).
+		Scan(&grades).Error; err != nil {
+		logs.Sugar.Errorf("Failed to query landing grades for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for i := range grades {
+		view.LandingGrades = append(view.LandingGrades, &grades[i])
+	}
+
+	return view, nil
+}
+
 // GetUnitProfile assembles the reference card for one unit type: curated
 // identity plus everything the events table knows about it.
 func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {

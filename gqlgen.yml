@@ -58,6 +58,15 @@ models:
   PlayerActivity:
     model:
       - github.com/MartinHell/overlord/models.PlayerActivity
+  PlayerProfile:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerProfileView
+  PlayerAircraftStats:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerAircraftStats
+  Matchup:
+    model:
+      - github.com/MartinHell/overlord/models.Matchup
   LandingGrade:
     model:
       - github.com/MartinHell/overlord/models.LandingGrade

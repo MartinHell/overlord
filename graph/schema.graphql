@@ -138,6 +138,74 @@ type PlayerActivity {
     deaths: Int!
 }
 
+"""
+Everything recorded about one player.
+
+The synthetic per-coalition AI players are ordinary players here, so asking for
+the blue AI returns that whole side's record in the same shape as a person's and
+the two can be compared directly.
+"""
+type PlayerProfile {
+    playerID: ID!
+    playerName: String!
+    "True for the synthetic AI players rather than a human."
+    isAI: Boolean!
+    "Sides this player has been seen on, busiest first. A human can switch between sorties."
+    coalitions: [String!]!
+
+    sorties: Int!
+    landings: Int!
+    crashes: Int!
+    ejections: Int!
+    deaths: Int!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    "Kills where the target was on the same side."
+    teamkills: Int!
+    "How often something of this player's was destroyed by someone else."
+    timesKilled: Int!
+    "Kills divided by deaths, counting a death as a pilot death or a crash. Equals kills when there are no deaths."
+    killDeathRatio: Float!
+    "Earliest and latest mission clock this player appears at."
+    firstSeen: Float!
+    lastSeen: Float!
+
+    "Record per airframe, most flown first."
+    aircraft: [PlayerAircraftStats!]!
+    "Record per weapon, most fired first."
+    weapons: [WeaponEffectiveness!]!
+    "What this player killed, by the airframe they were flying."
+    matchups: [Matchup!]!
+    "What killed this player. unitType is what they were flying, targetType is what killed them."
+    killedBy: [Matchup!]!
+    landingGrades: [LandingGrade!]!
+}
+
+"One player's record in one airframe."
+type PlayerAircraftStats {
+    unitType: String!
+    sorties: Int!
+    landings: Int!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    losses: Int!
+    ejections: Int!
+    "A ratio rather than a percentage, for the same reason as WeaponEffectiveness.hitsPerShot."
+    hitsPerShot: Float!
+    killsPerShot: Float!
+}
+
+"A kill tally for one airframe against one other type."
+type Matchup {
+    "The airframe that did the killing."
+    unitType: String!
+    "The type that was killed."
+    targetType: String!
+    kills: Int!
+}
+
 "One graded landing. The grade is free text as DCS reported it."
 type LandingGrade {
     playerName: String
@@ -236,6 +304,8 @@ type Query {
     weaponEffectiveness: [WeaponEffectiveness!]!
     "Sorties per player and how they ended."
     playerActivity: [PlayerActivity!]!
+    "Everything recorded about one player, human or AI."
+    playerProfile(playerID: ID!): PlayerProfile
     "Recent graded landings, newest first."
     landingGrades(first: Int): [LandingGrade!]!
     "Reference card and recorded stats for one airframe or vehicle type."

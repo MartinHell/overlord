@@ -51,6 +51,93 @@ type PlayerActivity struct {
 	Deaths     int
 }
 
+// PlayerProfileView is everything recorded about one player, human or AI.
+//
+// The synthetic AI players are first-class here on purpose: red and blue AI are
+// separate player rows, so the same page that shows a human's record shows how
+// the AI on each side is doing, and the two can be compared directly.
+type PlayerProfileView struct {
+	PlayerID   uint
+	PlayerName string
+	// IsAI marks the synthetic per-coalition AI players rather than a human.
+	IsAI bool
+	// Coalitions this player has been seen on, busiest first. A human can
+	// switch sides between sorties, so this is a list rather than a field.
+	Coalitions []string
+
+	Sorties   int
+	Landings  int
+	Crashes   int
+	Ejections int
+	Deaths    int
+	Shots     int
+	Hits      int
+	Kills     int
+	Teamkills int
+	// TimesKilled is how often something of this player's was destroyed by
+	// someone else, matched by unit name; see GetPlayerProfile.
+	TimesKilled int
+	FirstSeen   float64
+	LastSeen    float64
+
+	Aircraft      []*PlayerAircraftStats
+	Weapons       []*WeaponEffectiveness
+	Matchups      []*Matchup
+	KilledBy      []*Matchup
+	LandingGrades []*LandingGrade
+}
+
+// KillDeathRatio counts a death as a pilot death or a crash, which is as close
+// to "lost the aircraft" as the event stream gets. Kills with no deaths returns
+// the kill count rather than dividing by zero.
+func (p *PlayerProfileView) KillDeathRatio() float64 {
+	deaths := p.Deaths + p.Crashes
+	if deaths == 0 {
+		return float64(p.Kills)
+	}
+	return float64(p.Kills) / float64(deaths)
+}
+
+// PlayerAircraftStats is one player's record in one airframe.
+type PlayerAircraftStats struct {
+	UnitType  string
+	Sorties   int
+	Landings  int
+	Shots     int
+	Hits      int
+	Kills     int
+	Losses    int
+	Ejections int
+}
+
+// HitsPerShot carries the same caveat as WeaponEffectiveness.HitsPerShot: it is
+// a ratio that legitimately exceeds 1, not a percentage.
+func (a *PlayerAircraftStats) HitsPerShot() float64 {
+	if a.Shots == 0 {
+		return 0
+	}
+	return float64(a.Hits) / float64(a.Shots)
+}
+
+func (a *PlayerAircraftStats) KillsPerShot() float64 {
+	if a.Shots == 0 {
+		return 0
+	}
+	return float64(a.Kills) / float64(a.Shots)
+}
+
+// Matchup is a kill tally for one airframe against one other type.
+//
+// Read it in the direction the field names imply: UnitType did the killing,
+// TargetType was killed. On the KilledBy list the roles are reversed relative to
+// the player -- UnitType is what the player was flying when they died and
+// TargetType is what killed them -- which keeps a single shape for both tables.
+type Matchup struct {
+	UnitType   string
+	TargetType string
+	Kills      int
+}
+
 // LandingGrade is one graded landing, as DCS reported it.
 type LandingGrade struct {
 	PlayerName  string

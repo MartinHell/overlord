@@ -39,6 +39,11 @@ func (r *playerActivityResolver) PlayerID(ctx context.Context, obj *models.Playe
 }
 
 // PlayerID is the resolver for the playerID field.
+func (r *playerProfileResolver) PlayerID(ctx context.Context, obj *models.PlayerProfileView) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
 func (r *playerShotBreakdownResolver) PlayerID(ctx context.Context, obj *models.PlayerShotBreakdown) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
@@ -102,6 +107,18 @@ func (r *queryResolver) WeaponEffectiveness(ctx context.Context) ([]*models.Weap
 // PlayerActivity is the resolver for the playerActivity field.
 func (r *queryResolver) PlayerActivity(ctx context.Context) ([]*models.PlayerActivity, error) {
 	return controllers.GetPlayerActivity()
+}
+
+// PlayerProfile is the resolver for the playerProfile field.
+func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string) (*models.PlayerProfileView, error) {
+	// The argument name has to match the schema, since gqlgen regenerates this
+	// signature; keep the parsed value under a different name.
+	parsed, err := strconv.ParseUint(playerID, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+
+	return controllers.GetPlayerProfile(uint(parsed))
 }
 
 // LandingGrades is the resolver for the landingGrades field.
@@ -246,6 +263,9 @@ func (r *Resolver) PlayerActivity() generated.PlayerActivityResolver {
 	return &playerActivityResolver{r}
 }
 
+// PlayerProfile returns generated.PlayerProfileResolver implementation.
+func (r *Resolver) PlayerProfile() generated.PlayerProfileResolver { return &playerProfileResolver{r} }
+
 // PlayerShotBreakdown returns generated.PlayerShotBreakdownResolver implementation.
 func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
 	return &playerShotBreakdownResolver{r}
@@ -272,6 +292,7 @@ type (
 	eventResolver               struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
 	playerActivityResolver      struct{ *Resolver }
+	playerProfileResolver       struct{ *Resolver }
 	playerShotBreakdownResolver struct{ *Resolver }
 	queryResolver               struct{ *Resolver }
 	targetResolver              struct{ *Resolver }
@@ -279,13 +300,3 @@ type (
 	unitWeaponBreakdownResolver struct{ *Resolver }
 	weaponResolver              struct{ *Resolver }
 )
-
-// !!! WARNING !!!
-// The code below was going to be deleted when updating resolvers. It has been copied here so you have
-// one last chance to move it out of harms way if you want. There are two reasons this happens:
-//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
-//    it when you're done.
-//  - You have helper methods in this file. Move them out to keep these resolver files clean.
-/*
-	type Resolver struct{}
-*/

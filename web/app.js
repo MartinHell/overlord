@@ -65,14 +65,37 @@ const state = {
   weaponClass: "all",
   logGroup: "all",
   logSide: "all",
+  player: null,
   sort: {
     weapons: { key: "shots", dir: -1 },
     pilots: { key: "takeoffs", dir: -1 },
     loadout: { key: "shots", dir: -1 },
     traps: { key: "missionTime", dir: -1 },
     log: { key: "id", dir: -1 },
+    "p-aircraft": { key: "sorties", dir: -1 },
+    "p-weapons": { key: "shots", dir: -1 },
+    "p-matchups": { key: "kills", dir: -1 },
+    "p-killedby": { key: "kills", dir: -1 },
+    "p-grades": { key: "missionTime", dir: -1 },
   },
 };
+
+// The synthetic AI players are stored under a machine-ish name. They are real
+// players everywhere else in the app, so they get a real name here.
+const isAIName = (name) => /^AI-Unit \(/.test(name || "");
+
+function playerLabel(name) {
+  const ai = /^AI-Unit \((.+)\)$/.exec(name || "");
+  if (!ai) return name || "—";
+  const side = ai[1];
+  return side === "unknown" ? "Unattributed AI" : `${side[0].toUpperCase()}${side.slice(1)} AI`;
+}
+
+// A name that opens a player page.
+function pref(id, name) {
+  if (!id) return esc(playerLabel(name));
+  return `<span class="pref" data-player="${esc(id)}" role="button" tabindex="0">${esc(playerLabel(name))}</span>`;
+}
 
 // --- api -------------------------------------------------------------------
 
@@ -206,7 +229,10 @@ function sortRows(rows, table) {
   });
 }
 
-function render(table, columns, rows, renderRow) {
+// redraw is what a sort click re-runs. It defaults to the dashboard, since the
+// player page renders a different set of tables and must not redraw the one
+// behind it.
+function render(table, columns, rows, renderRow, redraw = draw) {
   const node = el(table);
 
   if (!rows.length) {
@@ -246,7 +272,7 @@ function render(table, columns, rows, renderRow) {
       const s = state.sort[table];
       s.dir = s.key === key ? -s.dir : -1;
       s.key = key;
-      draw();
+      redraw();
     });
   });
 }
@@ -306,8 +332,15 @@ function drawWeapons(rows) {
 }
 
 function drawPilots(rows) {
+  // Quiet AI buckets are hidden, but a human is always listed even with nothing
+  // against their name yet: they are a real person with a page, and dropping
+  // the row is the difference between "no sorties" and "not here".
   const filtered = rows
-    .filter((r) => r.takeoffs || r.landings || r.crashes || r.ejections || r.deaths)
+    .filter(
+      (r) =>
+        !isAIName(r.playerName) ||
+        r.takeoffs || r.landings || r.crashes || r.ejections || r.deaths
+    )
     .filter((r) => matches([r.playerName]));
 
   render(
@@ -322,7 +355,7 @@ function drawPilots(rows) {
     ],
     sortRows(filtered, "pilots"),
     (r) => `<tr>
-      <td class="name">${esc(r.playerName)}</td>
+      <td class="name">${pref(r.playerID, r.playerName)}</td>
       <td class="num">${num(r.takeoffs)}</td>
       <td class="num">${num(r.landings)}</td>
       <td class="num">${num(r.crashes)}</td>
@@ -362,6 +395,7 @@ function drawLoadout(players) {
     for (const u of p.units || []) {
       for (const w of u.weapons || []) {
         rows.push({
+          playerID: p.playerID,
           playerName: p.playerName,
           unitType: u.unitType,
           weaponType: w.weaponType,
@@ -384,7 +418,7 @@ function drawLoadout(players) {
     ],
     sortRows(filtered, "loadout"),
     (r) => `<tr>
-      <td class="name">${esc(r.playerName)}</td>
+      <td class="name">${pref(r.playerID, r.playerName)}</td>
       <td>${ref("unit", r.unitType)}</td>
       <td>${ref("weapon", r.weaponType)}</td>
       <td class="num"><span class="bar" style="width:${(r.shots / max) * 44}px"></span>${r.shots}</td>
@@ -487,6 +521,16 @@ async function refresh() {
     state.data = summary;
     state.log = log;
     draw();
+
+    // The player page is live too, otherwise a pilot's own page is the one
+    // place in the app that goes stale while they are flying.
+    if (state.player) {
+      const p = (await gqlVars(PLAYER_QUERY, { id: state.player.playerID })).playerProfile;
+      if (p) {
+        state.player = p;
+        drawPlayer();
+      }
+    }
     link.textContent = `Updated ${new Date().toLocaleTimeString([], { hour12: false })}`;
     link.className = "status up";
     el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refreshing every ${REFRESH_MS / 1000}s`;
@@ -506,6 +550,185 @@ async function refreshLog() {
     el("link").className = "status down";
     el("foot").textContent = `${err.message} — check that overlord is reachable at ${API_URL}`;
   }
+}
+
+// --- player page -----------------------------------------------------------
+
+const PLAYER_QUERY = `query($id: ID!) { playerProfile(playerID: $id) {
+  playerID playerName isAI coalitions
+  sorties landings crashes ejections deaths shots hits kills teamkills timesKilled
+  killDeathRatio firstSeen lastSeen
+  aircraft { unitType sorties landings shots hits kills losses ejections hitsPerShot killsPerShot }
+  weapons { weaponType shots hits kills hitsPerShot killsPerShot }
+  matchups { unitType targetType kills }
+  killedBy { unitType targetType kills }
+  landingGrades { unitType place grade missionTime }
+} }`;
+
+function headline(label, value, sub) {
+  return `<div><dt>${esc(label)}</dt><dd>${esc(value)}${
+    sub ? ` <small>${esc(sub)}</small>` : ""
+  }</dd></div>`;
+}
+
+function drawPlayer() {
+  const p = state.player;
+  if (!p) return;
+
+  el("player-name").textContent = playerLabel(p.playerName);
+
+  const tags = [
+    p.isAI ? `<span class="tag">AI</span>` : `<span class="tag">Pilot</span>`,
+    ...(p.coalitions || []).map(
+      (c) => `<span class="tag tag-${esc(c)}">${esc(c)}</span>`
+    ),
+  ];
+  el("player-tags").innerHTML = tags.join("");
+
+  // Landings against sorties is the closest thing to "got home in one piece"
+  // the event stream offers.
+  const survival = p.sorties ? Math.round((p.landings / p.sorties) * 100) : null;
+  const best = [...(p.aircraft || [])].sort((a, b) => b.kills - a.kills)[0];
+  const favourite = [...(p.weapons || [])].sort((a, b) => b.shots - a.shots)[0];
+
+  el("player-headline").innerHTML = [
+    headline("Sorties", p.sorties),
+    headline("Kills", p.kills, p.teamkills ? `${p.teamkills} friendly` : ""),
+    headline("Shot down", p.timesKilled),
+    headline("K/D", p.killDeathRatio.toFixed(2)),
+    headline("Shots", p.shots),
+    headline("Hits", p.hits),
+    survival === null ? "" : headline("Landed", `${survival}%`, `${p.landings}/${p.sorties}`),
+    headline("Ejections", p.ejections),
+  ].join("");
+
+  const bits = [];
+  if (best && best.kills) bits.push(`Deadliest in the ${unitName(best.unitType)} with ${best.kills} kills.`);
+  if (favourite && favourite.shots) bits.push(`Reaches for the ${weaponName(favourite.weaponType)} most often.`);
+  if (p.lastSeen) bits.push(`Active between ${clock(p.firstSeen)} and ${clock(p.lastSeen)} mission time.`);
+  el("player-note").textContent = bits.join(" ");
+
+  render(
+    "p-aircraft",
+    [
+      { label: "Aircraft", key: "unitType" },
+      { label: "Sorties", key: "sorties", num: true },
+      { label: "Kills", key: "kills", num: true },
+      { label: "Shots", key: "shots", num: true },
+      { label: "Hits", key: "hits", num: true },
+      { label: "Lost", key: "losses", num: true },
+      { label: "Kills / shot", key: "killsPerShot", num: true },
+    ],
+    sortRows(p.aircraft || [], "p-aircraft"),
+    (a) => `<tr>
+      <td class="name">${ref("unit", a.unitType)}</td>
+      <td class="num">${num(a.sorties)}</td>
+      <td class="num">${num(a.kills)}</td>
+      <td class="num">${num(a.shots)}</td>
+      <td class="num">${num(a.hits)}</td>
+      <td class="num">${num(a.losses)}</td>
+      <td class="num">${a.shots ? ratio(a.killsPerShot) : `<span class="zero">—</span>`}</td>
+    </tr>`,
+    drawPlayer
+  );
+
+  render(
+    "p-weapons",
+    [
+      { label: "Weapon", key: "weaponType" },
+      { label: "Shots", key: "shots", num: true },
+      { label: "Hits", key: "hits", num: true },
+      { label: "Kills", key: "kills", num: true },
+      { label: "Kills / shot", key: "killsPerShot", num: true },
+    ],
+    sortRows(p.weapons || [], "p-weapons"),
+    (w) => `<tr>
+      <td class="name">${ref("weapon", w.weaponType)}</td>
+      <td class="num">${num(w.shots)}</td>
+      <td class="num">${num(w.hits)}</td>
+      <td class="num">${num(w.kills)}</td>
+      <td class="num">${w.shots ? ratio(w.killsPerShot) : `<span class="zero">—</span>`}</td>
+    </tr>`,
+    drawPlayer
+  );
+
+  render(
+    "p-matchups",
+    [
+      { label: "Flying", key: "unitType" },
+      { label: "Killed", key: "targetType" },
+      { label: "Count", key: "kills", num: true },
+    ],
+    sortRows(p.matchups || [], "p-matchups"),
+    (m) => `<tr>
+      <td class="name">${ref("unit", m.unitType)}</td>
+      <td>${ref("unit", m.targetType)}</td>
+      <td class="num">${num(m.kills)}</td>
+    </tr>`,
+    drawPlayer
+  );
+
+  render(
+    "p-killedby",
+    [
+      { label: "Flying", key: "unitType" },
+      { label: "Killed by", key: "targetType" },
+      { label: "Count", key: "kills", num: true },
+    ],
+    sortRows(p.killedBy || [], "p-killedby"),
+    (m) => `<tr>
+      <td class="name">${ref("unit", m.unitType)}</td>
+      <td>${ref("unit", m.targetType)}</td>
+      <td class="num">${num(m.kills)}</td>
+    </tr>`,
+    drawPlayer
+  );
+
+  render(
+    "p-grades",
+    [
+      { label: "Time", key: "missionTime", num: true },
+      { label: "Aircraft", key: "unitType" },
+      { label: "Airfield", key: "place" },
+      { label: "Grade", key: "grade" },
+    ],
+    sortRows(p.landingGrades || [], "p-grades"),
+    (g) => `<tr>
+      <td class="num">${clock(g.missionTime)}</td>
+      <td>${g.unitType ? ref("unit", g.unitType) : "—"}</td>
+      <td>${esc(g.place || "—")}</td>
+      <td class="grade">${esc(g.grade || "—")}</td>
+    </tr>`,
+    drawPlayer
+  );
+}
+
+async function openPlayer(id) {
+  el("dash").hidden = true;
+  el("player-view").hidden = false;
+  el("player-name").textContent = "Loading…";
+  el("player-tags").innerHTML = "";
+  el("player-headline").innerHTML = "";
+  el("player-note").textContent = "";
+  location.hash = `#/player/${encodeURIComponent(id)}`;
+  window.scrollTo(0, 0);
+
+  try {
+    const p = (await gqlVars(PLAYER_QUERY, { id })).playerProfile;
+    if (!p) throw new Error("no such player");
+    state.player = p;
+    drawPlayer();
+  } catch (err) {
+    el("player-name").textContent = "Could not load this pilot";
+    el("player-note").textContent = err.message;
+  }
+}
+
+function closePlayer() {
+  state.player = null;
+  el("player-view").hidden = true;
+  el("dash").hidden = false;
+  if (location.hash.startsWith("#/")) history.replaceState(null, "", location.pathname);
 }
 
 // --- reference card --------------------------------------------------------
@@ -682,9 +905,19 @@ el("card").addEventListener("close", clearDeepLink);
 
 // One listener for the whole document, so it survives every table redraw.
 document.addEventListener("click", (e) => {
+  const p = e.target.closest(".pref");
+  if (p) {
+    closeCard();
+    openPlayer(p.dataset.player);
+    return;
+  }
   const r = e.target.closest(".ref");
   if (r) {
     openCard(r.dataset.ref, r.dataset.type);
+    return;
+  }
+  if (e.target.id === "player-back") {
+    closePlayer();
     return;
   }
   // A modal dialog fills the viewport for hit-testing purposes, so a click on
@@ -696,17 +929,41 @@ document.addEventListener("click", (e) => {
 // Escape and the close button are the dialog's own job now. This only covers
 // activating a reference name, which is a span rather than a button.
 document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const p = document.activeElement?.closest?.(".pref");
+  if (p) {
+    e.preventDefault();
+    closeCard();
+    openPlayer(p.dataset.player);
+    return;
+  }
   const r = document.activeElement?.closest?.(".ref");
-  if (r && (e.key === "Enter" || e.key === " ")) {
+  if (r) {
     e.preventDefault();
     openCard(r.dataset.ref, r.dataset.type);
   }
 });
 
-// Deep links: #/unit/F-15C opens that card directly.
+// Deep links. #/unit/F-15C opens that reference card, #/player/2 opens a pilot
+// page. Anything else means neither, which is also what going back to a bare
+// URL has to do -- otherwise the browser back button leaves the player page up
+// with a dashboard URL.
 function openFromHash() {
-  const m = location.hash.match(/^#\/(unit|weapon)\/(.+)$/);
-  if (m) openCard(m[1], decodeURIComponent(m[2]));
+  const card = location.hash.match(/^#\/(unit|weapon)\/(.+)$/);
+  if (card) {
+    openCard(card[1], decodeURIComponent(card[2]));
+    return;
+  }
+
+  const player = location.hash.match(/^#\/player\/(.+)$/);
+  if (player) {
+    const id = decodeURIComponent(player[1]);
+    if (state.player?.playerID !== id) openPlayer(id);
+    return;
+  }
+
+  closeCard();
+  if (state.player) closePlayer();
 }
 window.addEventListener("hashchange", openFromHash);
 
