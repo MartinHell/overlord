@@ -225,6 +225,33 @@ type Matchup {
     kills: Int!
 }
 
+"""
+What got caught in the blast: map scenery, counted apart from anything that
+shoots back. Excluded from every hit and kill figure on purpose -- a bomb
+catching a wood is not marksmanship -- but far too good to throw away.
+"""
+type Collateral {
+    "Scenery objects hit. DCS emits a hit when a blast touches one."
+    struck: Int!
+    "Scenery objects actually destroyed, which is a much smaller number than struck."
+    levelled: Int!
+    "Trees and structures split struck. The grouping is read off the DCS identifier, so it is a guess."
+    trees: Int!
+    structures: Int!
+    "The busiest kinds, at most ten."
+    top: [SceneryCount!]!
+}
+
+"One kind of scenery and how often it was hit."
+type SceneryCount {
+    type: String!
+    "Readable form of the DCS identifier."
+    displayName: String!
+    count: Int!
+    "Whether this was grouped as a plant."
+    tree: Boolean!
+}
+
 "One graded landing. The grade is free text as DCS reported it."
 type LandingGrade {
     playerName: String
@@ -325,6 +352,8 @@ type Query {
     playerActivity: [PlayerActivity!]!
     "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."
     playerProfile(playerID: ID!, unitType: String): PlayerProfile
+    "Scenery caught in the blast. Omit playerID for the whole mission, including the majority DCS reports with no initiator."
+    collateral(playerID: ID): Collateral
     "Recent graded landings, newest first."
     landingGrades(first: Int): [LandingGrade!]!
     "Reference card and recorded stats for one airframe or vehicle type."

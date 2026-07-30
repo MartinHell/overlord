@@ -126,6 +126,24 @@ func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unit
 	return controllers.GetPlayerProfile(uint(parsed), narrow)
 }
 
+// Collateral is the resolver for the collateral field.
+func (r *queryResolver) Collateral(ctx context.Context, playerID *string) (*models.Collateral, error) {
+	// No player means the whole mission, which is the interesting number: DCS
+	// reports most scenery damage with no initiator at all, so the sum across
+	// every pilot is far short of the total.
+	var id *uint
+	if playerID != nil && *playerID != "" {
+		parsed, err := strconv.ParseUint(*playerID, 10, 64)
+		if err != nil {
+			return nil, nil
+		}
+		v := uint(parsed)
+		id = &v
+	}
+
+	return controllers.GetCollateral(id)
+}
+
 // LandingGrades is the resolver for the landingGrades field.
 func (r *queryResolver) LandingGrades(ctx context.Context, first *int) ([]*models.LandingGrade, error) {
 	limit := 0
@@ -209,6 +227,11 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, playerID string) (*mo
 	return controllers.GetShotsByPlayer(id)
 }
 
+// DisplayName is the resolver for the displayName field.
+func (r *sceneryCountResolver) DisplayName(ctx context.Context, obj *models.SceneryCount) (string, error) {
+	return models.SceneryName(obj.Type), nil
+}
+
 // TargetID is the resolver for the targetID field.
 func (r *targetResolver) TargetID(ctx context.Context, obj *models.Target) (string, error) {
 	return fmt.Sprintf("%v", obj.TargetID), nil
@@ -279,6 +302,9 @@ func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+// SceneryCount returns generated.SceneryCountResolver implementation.
+func (r *Resolver) SceneryCount() generated.SceneryCountResolver { return &sceneryCountResolver{r} }
+
 // Target returns generated.TargetResolver implementation.
 func (r *Resolver) Target() generated.TargetResolver { return &targetResolver{r} }
 
@@ -300,6 +326,7 @@ type (
 	playerProfileResolver       struct{ *Resolver }
 	playerShotBreakdownResolver struct{ *Resolver }
 	queryResolver               struct{ *Resolver }
+	sceneryCountResolver        struct{ *Resolver }
 	targetResolver              struct{ *Resolver }
 	unitResolver                struct{ *Resolver }
 	unitWeaponBreakdownResolver struct{ *Resolver }

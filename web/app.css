@@ -727,3 +727,43 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---- collateral ---- */
+
+.collateral-lede {
+  margin: 0 0 0.9rem;
+  max-width: 70ch;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.collateral-lede b { font-family: var(--mono); font-weight: 600; }
+
+.scenery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scenery li {
+  padding: 0.25rem 0.6rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+.scenery li b {
+  color: var(--text);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+/* Plants get a marker rather than a colour, so the one hue on this page stays
+   coalition and this stays a joke told in greyscale. */
+.scenery li.is-tree::after {
+  content: "🌲";
+  margin-left: 0.35rem;
+  font-size: 0.75em;
+}

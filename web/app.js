@@ -107,6 +107,7 @@ const QUERY = `{
   shotsByPlayers { playerID playerName units { unitType weapons { weaponType count } } }
   playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
   landingGrades(first: 40) { playerName unitType place grade missionTime }
+  collateral { struck levelled trees structures top { displayName count tree } }
   units { type displayName }
   weapons { type displayName }
 }`;
@@ -504,6 +505,7 @@ function draw() {
   drawTraps(d.landingGrades || []);
   drawLoadout(d.shotsByPlayers || []);
   drawLog(state.log);
+  el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
 
   const nodes = (state.log?.edges || []).map((e) => e.node);
   const latest = Math.max(0, ...nodes.map((n) => n.missionTime || 0));
@@ -682,6 +684,43 @@ function heatmap(rows, opts) {
   );
 }
 
+// Scenery. Deliberately light, deliberately apart from the real figures, and
+// deliberately not called "destroyed": DCS emits a hit when a blast touches a
+// tree and a kill only when it actually falls, and on this data that is 25,503
+// against 80. Labelling the first number "destroyed" would overstate it by
+// three hundred times.
+function collateralPanel(c, scope) {
+  if (!c || !c.struck) {
+    return `<p class="none">Nothing hit that could not shoot back. Suspiciously clean.</p>`;
+  }
+
+  const n = (v) => v.toLocaleString();
+  const top = (c.top || [])
+    .slice(0, 8)
+    .map(
+      (s) =>
+        `<li${s.tree ? ' class="is-tree"' : ""}><b>${n(s.count)}</b> ${esc(s.displayName)}</li>`
+    )
+    .join("");
+
+  return `
+    <p class="collateral-lede">
+      <b>${n(c.trees)}</b> trees and shrubs and <b>${n(c.structures)}</b> walls, poles and buildings
+      caught a blast. <b>${n(c.levelled)}</b> actually came down.
+    </p>
+    <ul class="scenery">${top}</ul>
+    <p class="chart-scale">
+      Counted apart from every other figure here, and never as a hit or a kill — a bomb finding a
+      wood is not marksmanship. DCS reports a hit when a blast touches scenery and a kill only when
+      it is destroyed, which is why the two numbers differ so wildly. Trees are told from buildings
+      by their DCS name, so the split is a good guess rather than a fact.${
+        scope === "mission"
+          ? " Most scenery damage arrives with no initiator attached, so the pilot pages add up to far less than this."
+          : ""
+      }
+    </p>`;
+}
+
 function headline(label, value, sub) {
   return `<div><dt>${esc(label)}</dt><dd>${esc(value)}${
     sub ? ` <small>${esc(sub)}</small>` : ""
@@ -753,6 +792,7 @@ function drawPlayer() {
       : "");
 
   el("player-timeline").innerHTML = timelineChart(p.timeline, p.bucketSeconds);
+  el("player-collateral").innerHTML = collateralPanel(state.collateral, "player");
 
   el("p-matchups-wrap").innerHTML = heatmap(p.matchups, {
     rowNoun: "aircraft",
@@ -848,10 +888,15 @@ async function loadPlayer() {
   try {
     // The reference cards need display names, which the dashboard query
     // normally fills in. This page has to ask for them itself.
-    const [profile, lookup] = await Promise.all([
+    const [profile, lookup, side] = await Promise.all([
       gqlVars(PLAYER_QUERY, { id, unitType }),
       gql(`{ units { type displayName } weapons { type displayName } }`),
+      gqlVars(
+        `query($id: ID!) { collateral(playerID: $id) { struck levelled trees structures top { displayName count tree } } }`,
+        { id }
+      ),
     ]);
+    state.collateral = side.collateral;
 
     for (const u of lookup.units || []) names.unit.set(u.type, u.displayName);
     for (const w of lookup.weapons || []) names.weapon.set(w.type, w.displayName);

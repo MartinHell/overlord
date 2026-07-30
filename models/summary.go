@@ -158,6 +158,31 @@ type Matchup struct {
 	Kills      int
 }
 
+// Collateral is what got caught in the blast: map scenery, counted separately
+// from anything that shoots back.
+//
+// Struck and Levelled are different events and the difference matters. DCS
+// emits a hit when a blast touches a scenery object and a kill only when it is
+// actually destroyed, and on the test mission that was 25,301 against 78. A
+// figure labelled "destroyed" that is really the first number would be wrong by
+// three hundred times.
+type Collateral struct {
+	Struck   int
+	Levelled int
+	// Trees and Structures split Struck. The grouping is read off the DCS
+	// identifier, so it is a guess; see IsTree.
+	Trees      int
+	Structures int
+	Top        []*SceneryCount
+}
+
+// SceneryCount is one kind of scenery and how often it was hit.
+type SceneryCount struct {
+	Type  string
+	Count int
+	Tree  bool
+}
+
 // LandingGrade is one graded landing, as DCS reported it.
 type LandingGrade struct {
 	PlayerName  string

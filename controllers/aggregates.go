@@ -603,6 +603,59 @@ func whereUnitType(unitType string) func(*gorm.DB) *gorm.DB {
 	}
 }
 
+// GetCollateral counts what was hit that was never a threat: trees, walls,
+// houses, lamp posts. Pass a player to get only theirs, or nil for the mission.
+//
+// This is the one place scenery is counted rather than filtered out. Everywhere
+// else it is excluded, because a bomb catching a wood is not marksmanship and
+// counting it would flatter every weapon with a warhead.
+func GetCollateral(playerID *uint) (*models.Collateral, error) {
+	var rows []struct {
+		Type   string
+		Struck int
+		Killed int
+	}
+
+	q := initializers.DB.Model(&models.Event{}).
+		Select(`units.type AS type,
+			SUM(CASE WHEN events.event = 'hit' THEN 1 ELSE 0 END) AS struck,
+			SUM(CASE WHEN events.event = 'kill' THEN 1 ELSE 0 END) AS killed`).
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("JOIN units ON units.unit_id = targets.unit_id").
+		Where("targets.kind = ? AND events.event IN ?", models.ObjectKindScenery, []string{"hit", "kill"}).
+		Group("units.type").
+		Order("struck DESC, units.type")
+
+	if playerID != nil {
+		q = q.Where("events.player_id = ?", *playerID)
+	}
+
+	if err := q.Scan(&rows).Error; err != nil {
+		logs.Sugar.Errorf("Failed to aggregate collateral damage: %v", err)
+		return nil, err
+	}
+
+	out := &models.Collateral{}
+	for _, r := range rows {
+		out.Struck += r.Struck
+		out.Levelled += r.Killed
+
+		tree := models.IsTree(r.Type)
+		if tree {
+			out.Trees += r.Struck
+		} else {
+			out.Structures += r.Struck
+		}
+
+		// The tail is long and mostly ones, so only the leaderboard travels.
+		if len(out.Top) < 10 {
+			out.Top = append(out.Top, &models.SceneryCount{Type: r.Type, Count: r.Struck, Tree: tree})
+		}
+	}
+
+	return out, nil
+}
+
 // GetUnitProfile assembles the reference card for one unit type: curated
 // identity plus everything the events table knows about it.
 func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {

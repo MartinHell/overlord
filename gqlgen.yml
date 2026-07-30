@@ -67,6 +67,12 @@ models:
   Matchup:
     model:
       - github.com/MartinHell/overlord/models.Matchup
+  Collateral:
+    model:
+      - github.com/MartinHell/overlord/models.Collateral
+  SceneryCount:
+    model:
+      - github.com/MartinHell/overlord/models.SceneryCount
   TimelineBucket:
     model:
       - github.com/MartinHell/overlord/models.TimelineBucket
