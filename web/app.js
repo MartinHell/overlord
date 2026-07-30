@@ -127,7 +127,7 @@ function dashQuery() {
     deadliest { weaponType shots kills killsPerShot }
   }
   collateral${p} { struck levelled trees structures top { displayName count tree } }
-  missionTasks${p} { taskKey title state playerName points }
+  missionTasks${p} { taskKey title state playerName playerID points }
   killPoints${p} { lat lon coalition playerName unitType targetType weaponType missionTime }
   feed: events(first: 8, eventType: "kill"${m ? ", " + m : ""}) {
     edges { node {
@@ -452,9 +452,11 @@ function drawPilots(rows) {
 
   // Ranked by score when the mission awards any, kills otherwise. The medals
   // are the point: a leaderboard nobody can win is just a table.
-  const scoreFor = (name) => {
+  const scoreFor = (r) => {
     let sum = 0;
-    for (const t of state.data?.missionTasks || []) if (t.playerName === name) sum += t.points;
+    for (const t of state.data?.missionTasks || []) {
+      if (t.playerID ? t.playerID === r.playerID : t.playerName === r.playerName) sum += t.points;
+    }
     return sum;
   };
   const anyScore = (state.data?.missionTasks || []).some((t) => t.points > 0);
@@ -462,7 +464,7 @@ function drawPilots(rows) {
   const ranked = filtered
     .map((r) => ({
       ...r,
-      score: scoreFor(r.playerName),
+      score: scoreFor(r),
       kd: (r.deaths + r.crashes) > 0 ? r.kills / (r.deaths + r.crashes) : r.kills,
     }))
     .sort((a, b) => (anyScore && b.score !== a.score ? b.score - a.score : b.kills - a.kills));
@@ -1223,7 +1225,9 @@ function drawPlayer() {
   drawTasks(
     "player-tasks",
     "p-player-tasks",
-    (state.tasks || []).filter((t) => t.playerName === p.playerName)
+    (state.tasks || []).filter(
+      (t) => (t.playerID ? t.playerID === p.playerID : t.playerName === p.playerName)
+    )
   );
 
   const matchHay = (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)]);
@@ -1343,7 +1347,7 @@ async function loadPlayer() {
         { id }
       ),
       gqlVars(
-        `query($m: ID) { missionTasks(missionID: $m) { taskKey title state playerName points } }`,
+        `query($m: ID) { missionTasks(missionID: $m) { taskKey title state playerName playerID points } }`,
         { m }
       ),
     ]);

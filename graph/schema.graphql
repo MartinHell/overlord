@@ -381,8 +381,10 @@ type MissionTask {
     title: String!
     "The mission's own word: active, done, failed. Displayed, never acted on."
     state: String!
-    "Who it belongs to, empty for a mission-wide entry. Matched by name."
+    "Who it belongs to as the mission spelled it, empty for a mission-wide entry."
     playerName: String!
+    "The stable player behind that name, resolved at ingest. Null when the name matched nobody."
+    playerID: ID
     points: Int!
     updatedAt: Time!
 }

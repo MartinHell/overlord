@@ -111,6 +111,28 @@ func pullMissionExport(ctx context.Context) error {
 		return nil
 	}
 
+	// Resolve each exported name to a stable player once per poll. The name
+	// is what the mission knows; the identity behind it is what survives a
+	// rename between sessions.
+	resolved := map[string]*uint{}
+	resolve := func(name string) *uint {
+		if name == "" {
+			return nil
+		}
+		if id, seen := resolved[name]; seen {
+			return id
+		}
+		var player models.Player
+		player.PlayerName = &name
+		if err := player.GetPlayerFromDB(); err == nil && player.PlayerID != 0 {
+			id := player.PlayerID
+			resolved[name] = &id
+			return &id
+		}
+		resolved[name] = nil
+		return nil
+	}
+
 	for _, t := range export.Tasks {
 		if t.ID == "" {
 			continue
@@ -122,6 +144,7 @@ func pullMissionExport(ctx context.Context) error {
 			Title:      t.Title,
 			State:      t.State,
 			PlayerName: t.Player,
+			PlayerID:   resolve(t.Player),
 			Points:     t.Points,
 		}
 
@@ -129,7 +152,7 @@ func pullMissionExport(ctx context.Context) error {
 		// poll simply wins.
 		if err := initializers.DB.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "mission_id"}, {Name: "task_key"}},
-			DoUpdates: clause.AssignmentColumns([]string{"title", "state", "player_name", "points", "updated_at"}),
+			DoUpdates: clause.AssignmentColumns([]string{"title", "state", "player_name", "player_id", "points", "updated_at"}),
 		}).Create(&row).Error; err != nil {
 			logs.Sugar.Errorf("Failed to upsert mission task %q: %v", t.ID, err)
 		}

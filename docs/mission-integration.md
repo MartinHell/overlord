@@ -79,6 +79,41 @@ That is the entire mission-side implementation. No sockets, no files, no
 DCS-gRPC calls from the mission script — overlord reaches in and reads the
 table.
 
+## Crews and shared tasks
+
+A package with several humans exports **one entry per pilot** — `pkg-3-p1`,
+`pkg-3-p2` — same title and state, each with its own `player`, ordinals
+assigned on first sighting so ids never renumber. This is the shape the
+dashboard wants: the panel sorts by points then id, so crew rows sit together,
+and each pilot's page picks up exactly their rows. Do not merge a crew into
+one entry with a combined name; that breaks per-pilot attribution.
+
+Points on shared tasks are the mission's design decision — the dashboard sums
+whatever it is given, per pilot, and shows no mission-wide total that would
+require points to be conserved. Both conventions work mechanically.
+
+Entries should outlive the thing that created them: keep publishing a closed
+package as `done`/`failed` rather than dropping it, so a pilot's work does not
+vanish at the moment it paid off. (Dropping an entry does not delete the
+stored row — the newest published state simply stays — but keeping it in the
+export is clearer about intent.)
+
+## Player identity
+
+Export the DCS player name; that is all the mission sandbox knows, and it is
+enough. Overlord already keys players by UCID (obtained from the server hooks
+side over the net API) and resolves each exported name to that stable identity
+at ingest, while the pilot is connected — which is exactly when a live mission
+publishes tasks about them. A later rename does not orphan old tasks: matching
+is by resolved identity first, name only as a fallback for entries that never
+resolved.
+
+Two edges worth knowing. An entry published only after its pilot disconnected
+may fail to resolve and falls back to name matching. And two simultaneously
+connected players with the identical name are ambiguous — the first match
+wins. Neither justifies a version 2; if UCID ever turns out to be reachable
+from the sandbox, an optional field can be added without breaking version 1.
+
 ## Server configuration (one-time, already done on this machine)
 
 Overlord reads the table via DCS-gRPC's `CustomService.Eval`, which is off by

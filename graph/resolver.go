@@ -36,6 +36,15 @@ func (r *missionResolver) ID(ctx context.Context, obj *models.MissionSummary) (s
 }
 
 // PlayerID is the resolver for the playerID field.
+func (r *missionTaskResolver) PlayerID(ctx context.Context, obj *models.MissionTask) (*string, error) {
+	if obj.PlayerID == nil {
+		return nil, nil
+	}
+	s := fmt.Sprintf("%v", *obj.PlayerID)
+	return &s, nil
+}
+
+// PlayerID is the resolver for the playerID field.
 func (r *playerResolver) PlayerID(ctx context.Context, obj *models.Player) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
@@ -337,6 +346,9 @@ func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecor
 // Mission returns generated.MissionResolver implementation.
 func (r *Resolver) Mission() generated.MissionResolver { return &missionResolver{r} }
 
+// MissionTask returns generated.MissionTaskResolver implementation.
+func (r *Resolver) MissionTask() generated.MissionTaskResolver { return &missionTaskResolver{r} }
+
 // Player returns generated.PlayerResolver implementation.
 func (r *Resolver) Player() generated.PlayerResolver { return &playerResolver{r} }
 
@@ -378,6 +390,7 @@ type (
 	eventResolver               struct{ *Resolver }
 	killRecordResolver          struct{ *Resolver }
 	missionResolver             struct{ *Resolver }
+	missionTaskResolver         struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
 	playerActivityResolver      struct{ *Resolver }
 	playerProfileResolver       struct{ *Resolver }

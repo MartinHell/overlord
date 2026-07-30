@@ -22,9 +22,15 @@ type MissionTask struct {
 	// State is the mission's own word for where the task stands: active, done,
 	// failed. Free text on purpose; overlord displays it, it does not act on it.
 	State string
-	// PlayerName is who the task or score belongs to, empty for a side-wide
-	// or mission-wide entry. Matched by name because the mission scripting
-	// environment knows player names, not overlord's ids.
+	// PlayerName is who the task or score belongs to as the mission spelled
+	// it, empty for a mission-wide entry. The mission scripting environment
+	// knows names and nothing else.
 	PlayerName string `gorm:"index"`
-	Points     int
+	// PlayerID is the stable identity behind that name, resolved at ingest
+	// from the live player list -- overlord already keys players by UCID, and
+	// a mission publishes tasks about a pilot while that pilot is connected,
+	// which is exactly the window the name is resolvable in. Null when the
+	// name matched nobody; display falls back to the name.
+	PlayerID *uint `gorm:"index"`
+	Points   int
 }
