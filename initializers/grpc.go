@@ -29,11 +29,18 @@ func InitGrpc() error {
 		),
 	}
 
-	// The dial is lazy: it does not fail when DCS is down, it reconnects in the
-	// background instead. That is what we want, since overlord is expected to
-	// outlive any single DCS session.
+	// Lazy: this does not fail when DCS is down, it reconnects in the background
+	// instead. That is what we want, since overlord is expected to outlive any
+	// single DCS session.
+	//
+	// NewClient rather than the deprecated Dial. The two differ in more than a
+	// name: Dial defaults to the passthrough resolver, NewClient to dns. For a
+	// bare host:port that means a hostname is now actually resolved, and
+	// re-resolved when the connection drops, so pointing GRPC_SERVER_ADDRESS at
+	// a name whose address changes works instead of pinning to the first
+	// answer. An IP literal behaves the same either way.
 	var err error
-	GrpcClientConn, err = grpc.Dial(addr, opts...)
+	GrpcClientConn, err = grpc.NewClient(addr, opts...)
 	if err != nil {
 		return err
 	}
