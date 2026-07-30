@@ -194,6 +194,39 @@ type PlayerProfile {
 
     "Where the kills happened. Roughly half of kills carry no position and are absent here."
     killPoints: [KillPoint!]!
+
+    "The dossier superlatives: favourite aircraft, worst enemy and so on."
+    favourites: Favourites!
+}
+
+"One superlative: a name and how often it earned the title."
+type Favourite {
+    "Set when the name is a pilot the client can link to, null otherwise."
+    id: ID
+    name: String!
+    count: Int!
+}
+
+"""
+The dossier lines on a pilot page, each the standout answer to one question.
+Every field is null when there is nothing to crown; the client leaves that
+line out rather than inventing a zero.
+"""
+type Favourites {
+    "Most-flown airframe, by sorties."
+    aircraft: Favourite
+    "Weapon with the most kills. Null until something has died to one."
+    weapon: Favourite
+    "The type this player has destroyed most."
+    prey: Favourite
+    "The type that has shot this player down most."
+    nemesisUnit: Favourite
+    "The pilot credited with most of this player's deaths. The per-coalition AI players count like anyone else."
+    nemesisPilot: Favourite
+    "The weapon this player has died to most."
+    deadliestWeapon: Favourite
+    "The map with most of this player's kills. Trivially the current map under a single-mission scope."
+    theatre: Favourite
 }
 
 "One kill with a place and a side, for the mission map."

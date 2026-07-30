@@ -392,6 +392,21 @@ func GetLandingGrades(limit int, missionID *uint) ([]*models.LandingGrade, error
 // ordinary player rows: asking for the blue AI gives that whole side's record
 // in the same shape as a person's.
 //
+// topFavourite crowns the largest tally in a map. Ties break alphabetically so
+// the answer is stable between refreshes; map order alone is not.
+func topFavourite(totals map[string]int) *models.Favourite {
+	var best *models.Favourite
+	for name, n := range totals {
+		if n <= 0 {
+			continue
+		}
+		if best == nil || n > best.Count || (n == best.Count && name < best.Name) {
+			best = &models.Favourite{Name: name, Count: n}
+		}
+	}
+	return best
+}
+
 // Several queries rather than one. They group by different things -- airframe,
 // weapon, matchup -- so a single statement would need either a join per
 // dimension, multiplying rows, or a window function, which is not portable
@@ -589,10 +604,14 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 	// initiator on that player's own events. Matching on it is therefore exact
 	// within a mission; across missions a reused slot name could in principle
 	// be credited to the wrong player.
-	playerUnits := onUnit(db.Model(&models.Event{})).
-		Scopes(scopeMission(missionID)).
-		Select("DISTINCT events.initiator_name").
-		Where("events.player_id = ? AND events.initiator_name <> ?", playerID, "")
+	// Built fresh per use rather than shared: the favourites below need the
+	// same subquery, and a *gorm.DB accumulates state when reused.
+	victimNames := func() *gorm.DB {
+		return onUnit(db.Model(&models.Event{})).
+			Scopes(scopeMission(missionID)).
+			Select("DISTINCT events.initiator_name").
+			Where("events.player_id = ? AND events.initiator_name <> ?", playerID, "")
+	}
 
 	var killedBy []models.Matchup
 	killedByQuery := db.Model(&models.Event{}).
@@ -602,7 +621,7 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 		Joins("JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
 		Where("events.event = ? AND events.player_id <> ? AND events.target_name IN (?)",
-			"kill", playerID, playerUnits)
+			"kill", playerID, victimNames())
 
 	// Here the player's airframe is the victim, so the narrowing applies to the
 	// target side rather than the initiator.
@@ -621,6 +640,109 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 		view.KilledBy = append(view.KilledBy, &killedBy[i])
 		view.TimesKilled += killedBy[i].Kills
 	}
+
+	// Favourites: one standout answer per dossier line. The first four are
+	// maxima over aggregates computed above; the rest need their own queries
+	// because killedBy grouped away the weapon and the killer, and nothing so
+	// far has touched the mission's theatre.
+	fav := &models.Favourites{}
+
+	for _, a := range view.Aircraft { // already ordered most sorties first
+		if a.Sorties > 0 {
+			fav.Aircraft = &models.Favourite{Name: a.UnitType, Count: a.Sorties}
+			break
+		}
+	}
+
+	// Most kills; the list is ordered most fired first, so a strict > hands
+	// ties to the weapon they actually reach for.
+	for _, w := range view.Weapons {
+		if w.Kills > 0 && (fav.Weapon == nil || w.Kills > fav.Weapon.Count) {
+			fav.Weapon = &models.Favourite{Name: w.WeaponType, Count: w.Kills}
+		}
+	}
+
+	prey := map[string]int{}
+	for _, m := range view.Matchups {
+		prey[m.TargetType] += m.Kills
+	}
+	fav.Prey = topFavourite(prey)
+
+	// On the killedBy list TargetType is what did the killing; see Matchup.
+	nemeses := map[string]int{}
+	for _, m := range view.KilledBy {
+		nemeses[m.TargetType] += m.Kills
+	}
+	fav.NemesisUnit = topFavourite(nemeses)
+
+	var nemesisPilot struct {
+		ID    uint
+		Name  string
+		Total int
+	}
+	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
+		Select("players.player_id AS id, players.player_name AS name, COUNT(*) AS total").
+		Joins("JOIN players ON players.player_id = events.player_id").
+		Where("events.event = ? AND events.player_id <> ? AND events.target_name IN (?)",
+			"kill", playerID, victimNames()).
+		Group("players.player_id, players.player_name").
+		Order("total DESC, players.player_name").
+		Limit(1).
+		Scan(&nemesisPilot).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find nemesis pilot for player %d: %v", playerID, err)
+		return nil, err
+	}
+	if nemesisPilot.Total > 0 {
+		id := nemesisPilot.ID
+		fav.NemesisPilot = &models.Favourite{ID: &id, Name: nemesisPilot.Name, Count: nemesisPilot.Total}
+	}
+
+	var deadliest struct {
+		Name  string
+		Total int
+	}
+	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
+		Select("weapons.type AS name, COUNT(*) AS total").
+		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Where("events.event = ? AND events.player_id <> ? AND events.target_name IN (?)",
+			"kill", playerID, victimNames()).
+		Group("weapons.type").
+		Order("total DESC, weapons.type").
+		Limit(1).
+		Scan(&deadliest).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find deadliest weapon for player %d: %v", playerID, err)
+		return nil, err
+	}
+	if deadliest.Total > 0 {
+		fav.DeadliestWeapon = &models.Favourite{Name: deadliest.Name, Count: deadliest.Total}
+	}
+
+	// Scenery excluded to match every other kill count on the profile.
+	var theatre struct {
+		Name  string
+		Total int
+	}
+	if err := onUnit(db.Model(&models.Event{})).
+		Scopes(scopeMission(missionID)).
+		Select("missions.theatre AS name, COUNT(*) AS total").
+		Joins("JOIN missions ON missions.mission_id = events.mission_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.event = ? AND events.player_id = ? AND missions.theatre <> ''", "kill", playerID).
+		Where("targets.kind IS NULL OR targets.kind <> ?", models.ObjectKindScenery).
+		Group("missions.theatre").
+		Order("total DESC, missions.theatre").
+		Limit(1).
+		Scan(&theatre).Error; err != nil {
+		logs.Sugar.Errorf("Failed to find favourite theatre for player %d: %v", playerID, err)
+		return nil, err
+	}
+	if theatre.Total > 0 {
+		fav.Theatre = &models.Favourite{Name: theatre.Name, Count: theatre.Total}
+	}
+
+	view.Favourites = fav
 
 	// Graded landings, newest first.
 	var grades []models.LandingGrade

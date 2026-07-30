@@ -25,6 +25,15 @@ func (r *eventResolver) ID(ctx context.Context, obj *models.Event) (string, erro
 	return fmt.Sprintf("%v", obj.ID), nil
 }
 
+// ID is the resolver for the id field.
+func (r *favouriteResolver) ID(ctx context.Context, obj *models.Favourite) (*string, error) {
+	if obj.ID == nil {
+		return nil, nil
+	}
+	id := fmt.Sprintf("%v", *obj.ID)
+	return &id, nil
+}
+
 // PlayerID is the resolver for the playerID field.
 func (r *killRecordResolver) PlayerID(ctx context.Context, obj *models.KillRecord) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
@@ -340,6 +349,9 @@ func (r *Resolver) BadgeAward() generated.BadgeAwardResolver { return &badgeAwar
 // Event returns generated.EventResolver implementation.
 func (r *Resolver) Event() generated.EventResolver { return &eventResolver{r} }
 
+// Favourite returns generated.FavouriteResolver implementation.
+func (r *Resolver) Favourite() generated.FavouriteResolver { return &favouriteResolver{r} }
+
 // KillRecord returns generated.KillRecordResolver implementation.
 func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecordResolver{r} }
 
@@ -388,6 +400,7 @@ func (r *Resolver) Weapon() generated.WeaponResolver { return &weaponResolver{r}
 type (
 	badgeAwardResolver          struct{ *Resolver }
 	eventResolver               struct{ *Resolver }
+	favouriteResolver           struct{ *Resolver }
 	killRecordResolver          struct{ *Resolver }
 	missionResolver             struct{ *Resolver }
 	missionTaskResolver         struct{ *Resolver }

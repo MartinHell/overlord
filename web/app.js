@@ -689,6 +689,15 @@ const PLAYER_QUERY = `query($id: ID!, $unitType: String, $m: ID) { playerProfile
   landingGrades { unitType place grade missionTime }
   bucketSeconds timeline { t sorties kills losses shots }
   killPoints { lat lon targetType weaponType missionTime }
+  favourites {
+    aircraft { name count }
+    weapon { name count }
+    prey { name count }
+    nemesisUnit { name count }
+    nemesisPilot { id name count }
+    deadliestWeapon { name count }
+    theatre { name count }
+  }
 } }`;
 
 // Mission-clock activity, drawn as inline SVG. No chart library: this is one
@@ -1154,6 +1163,53 @@ function headline(label, value, sub) {
   }</dd></div>`;
 }
 
+// The dossier: superlatives with a name on them. Each line is the standout
+// answer to one question -- most flown, most lethal, most lethal against them.
+// A line with nothing to crown is left out rather than shown empty, and the
+// panel disappears entirely for a pilot with no story yet.
+function drawDossier(p) {
+  const f = p.favourites || {};
+  // The tally rides inside the dd: a dl group allows only dt and dd children.
+  const line = (label, value, sub) =>
+    `<div><dt>${esc(label)}</dt><dd>${value}<span class="dsub">${esc(sub)}</span></dd></div>`;
+  const n = (v, one, many) => `${v} ${v === 1 ? one : many}`;
+
+  const lines = [];
+
+  // Trivial answers are omitted: the aircraft line when the page is already
+  // narrowed to one airframe, the theatre line when the scope is one mission.
+  if (!p.unitType && f.aircraft) {
+    lines.push(line("Favourite aircraft", ref("unit", f.aircraft.name), n(f.aircraft.count, "sortie", "sorties")));
+  }
+
+  if (f.weapon) {
+    lines.push(line("Weapon of choice", ref("weapon", f.weapon.name), n(f.weapon.count, "kill", "kills")));
+  } else {
+    // Nothing has died to anything yet; most-fired is still an answer.
+    const fired = [...(p.weapons || [])].sort((a, b) => b.shots - a.shots)[0];
+    if (fired && fired.shots) {
+      lines.push(line("Weapon of choice", ref("weapon", fired.weaponType), `${n(fired.shots, "shot", "shots")}, nothing down yet`));
+    }
+  }
+
+  if (f.prey) lines.push(line("Favourite prey", ref("unit", f.prey.name), n(f.prey.count, "destroyed", "destroyed")));
+  if (f.nemesisUnit) {
+    lines.push(line("Worst enemy", ref("unit", f.nemesisUnit.name), n(f.nemesisUnit.count, "loss to it", "losses to it")));
+  }
+  if (f.nemesisPilot) {
+    lines.push(line("Nemesis", pref(f.nemesisPilot.id, f.nemesisPilot.name), n(f.nemesisPilot.count, "shoot-down", "shoot-downs")));
+  }
+  if (f.deadliestWeapon) {
+    lines.push(line("Deadliest threat", ref("weapon", f.deadliestWeapon.name), n(f.deadliestWeapon.count, "death to it", "deaths to it")));
+  }
+  if (state.scope !== "mission" && f.theatre) {
+    lines.push(line("Happy hunting ground", esc(f.theatre.name), n(f.theatre.count, "kill there", "kills there")));
+  }
+
+  el("p-dossier").hidden = lines.length === 0;
+  el("dossier").innerHTML = lines.join("");
+}
+
 function drawPlayer() {
   const p = state.player;
   if (!p) return;
@@ -1171,8 +1227,6 @@ function drawPlayer() {
   // Landings against sorties is the closest thing to "got home in one piece"
   // the event stream offers.
   const survival = p.sorties ? Math.round((p.landings / p.sorties) * 100) : null;
-  const best = [...(p.aircraft || [])].sort((a, b) => b.kills - a.kills)[0];
-  const favourite = [...(p.weapons || [])].sort((a, b) => b.shots - a.shots)[0];
 
   el("player-headline").innerHTML = [
     headline("Sorties", p.sorties),
@@ -1185,13 +1239,13 @@ function drawPlayer() {
     headline("Ejections", p.ejections),
   ].join("");
 
-  const bits = [];
-  if (!p.unitType && best && best.kills) {
-    bits.push(`Deadliest in the ${unitName(best.unitType)} with ${best.kills} kills.`);
-  }
-  if (favourite && favourite.shots) bits.push(`Reaches for the ${weaponName(favourite.weaponType)} most often.`);
-  if (p.lastSeen) bits.push(`Active between ${clock(p.firstSeen)} and ${clock(p.lastSeen)} mission time.`);
-  el("player-note").textContent = bits.join(" ");
+  // The note used to carry "deadliest in" and "reaches for" lines; those are
+  // the dossier's job now, with proper links and counts.
+  el("player-note").textContent = p.lastSeen
+    ? `Active between ${clock(p.firstSeen)} and ${clock(p.lastSeen)} mission time.`
+    : "";
+
+  drawDossier(p);
 
   // Filter and per-model page are the same control. These are real links, so a
   // narrowed view is as shareable as the pilot's own page.
