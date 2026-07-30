@@ -18,11 +18,19 @@ type Mission struct {
 	MissionID uint `gorm:"primaryKey;autoIncrement;not null;unique;index"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// Name and Theatre are fetched best-effort from DCS when the mission
+	// opens. Empty for missions recorded before this existed, and for any
+	// where the fetch failed -- absent means unknown, and the UI says so
+	// rather than inventing one.
+	Name    string
+	Theatre string
 }
 
 // MissionSummary is a mission with its derived facts, for listing.
 type MissionSummary struct {
 	MissionID uint
+	Name      string
+	Theatre   string
 	StartedAt time.Time
 	Events    int
 	// Duration is the highest mission clock seen, in seconds.

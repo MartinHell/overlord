@@ -922,3 +922,29 @@ footer {
 :root[data-theme="dark"] .map-tiles {
   filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
 }
+
+/* Medals are buttons now: reset the button chrome back to the card look, and
+   float the times-earned pill over the corner. */
+.medal {
+  position: relative;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.medal:hover { border-color: var(--line-strong); background: var(--surface); }
+.medal.earned:hover { background: var(--surface-2); }
+
+.medal-count {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  padding: 0.05rem 0.45rem;
+  background: var(--text);
+  border-radius: 999px;
+  color: var(--surface);
+  font: 600 0.6875rem/1.4 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.medal-bar.big { display: block; height: 5px; margin-top: 0.8rem; }

@@ -243,6 +243,10 @@ events, so backfilled missions report them exactly like live ones.
 """
 type Mission {
     id: ID!
+    "As DCS reports it. Empty for runs recorded before capture existed."
+    name: String!
+    "The map: Caucasus, Syria, and so on. Empty when unknown."
+    theatre: String!
     startedAt: Time!
     events: Int!
     "Highest mission clock seen, in seconds."
@@ -332,10 +336,24 @@ type Badge {
     "How it is earned, phrased for the locked state."
     description: String!
     earned: Boolean!
+    "How many times it has been earned. Career thresholds are 1; repeatable badges count every earning."
+    count: Int!
     "Progress towards target, for rendering the locked state."
     progress: Int!
     target: Int!
     "The earned story, e.g. how many kills in which mission."
+    detail: String!
+    "Individual earnings, newest first, capped at twelve. count carries the true number."
+    awards: [BadgeAward!]!
+}
+
+"One earning of a badge: which mission, on what map, when, and what happened."
+type BadgeAward {
+    missionID: ID!
+    "Empty when the mission predates name capture."
+    missionName: String!
+    theatre: String!
+    when: Time!
     detail: String!
 }
 

@@ -945,16 +945,62 @@ function drawBadges(badges) {
   el("badges").innerHTML = badges
     .map((b) => {
       const pct = b.target ? Math.min(100, Math.round((b.progress / b.target) * 100)) : 0;
-      return `<div class="medal${b.earned ? " earned" : ""}" title="${esc(b.earned ? b.detail : b.description)}">
+      return `<button type="button" class="medal${b.earned ? " earned" : ""}" data-badge="${esc(b.id)}"
+        title="${esc(b.earned ? b.detail : b.description)}">
         <span class="medal-emoji" aria-hidden="true">${b.emoji}</span>
+        ${b.earned && b.count > 1 ? `<span class="medal-count">×${b.count}</span>` : ""}
         <span class="medal-name">${esc(b.name)}</span>
         ${b.earned
           ? `<span class="medal-detail">${esc(b.detail)}</span>`
           : `<span class="medal-detail">${esc(b.description)}</span>
              <span class="medal-bar"><i style="width:${pct}%"></i></span>`}
-      </div>`;
+      </button>`;
     })
     .join("");
+}
+
+// The award history behind a badge, in the same dialog the reference cards
+// use. Mission-granular: sorties are not modelled yet, so a mission with its
+// name, map and date is as precise as the data honestly slices.
+function openBadgeCard(id) {
+  const b = (state.badges || []).find((x) => x.id === id);
+  if (!b) return;
+
+  const wrap = el("card");
+  el("card-name").textContent = `${b.emoji} ${b.name}`;
+  el("card-sub").textContent = b.description;
+
+  let body = "";
+  if (!b.earned) {
+    const pct = b.target ? Math.min(100, Math.round((b.progress / b.target) * 100)) : 0;
+    body = `<p class="card-blurb">Not earned yet.</p>
+      <p class="card-makers">${esc(b.detail)}</p>
+      <span class="medal-bar big"><i style="width:${pct}%"></i></span>`;
+  } else {
+    const when = (t) =>
+      new Date(t).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    const rows = (b.awards || [])
+      .map(
+        (a) => `<tr>
+          <td class="num">${esc(when(a.when))}</td>
+          <td>#${esc(a.missionID)}${a.missionName ? " · " + esc(a.missionName) : ""}</td>
+          <td>${esc(a.theatre || "—")}</td>
+          <td class="name">${esc(a.detail)}</td>
+        </tr>`
+      )
+      .join("");
+
+    body =
+      `<p class="card-blurb">Earned ${b.count > 1 ? `${b.count} times` : "once"}.</p>` +
+      `<div class="tw"><table class="grid"><thead><tr><th>When</th><th>Mission</th><th>Map</th><th>What happened</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+      (b.count > (b.awards || []).length
+        ? `<p class="chart-scale">Showing the latest ${b.awards.length} — the count is the true total.</p>`
+        : "") +
+      `<p class="chart-scale">Missions from before name capture existed show only their number.</p>`;
+  }
+
+  el("card-body").innerHTML = body;
+  if (!wrap.open) wrap.showModal();
 }
 
 function headline(label, value, sub) {
@@ -1150,7 +1196,7 @@ async function loadPlayer() {
         { id, m }
       ),
       gqlVars(
-        `query($id: ID!) { badges(playerID: $id) { id name emoji description earned progress target detail } }`,
+        `query($id: ID!) { badges(playerID: $id) { id name emoji description earned count progress target detail awards { missionID missionName theatre when detail } } }`,
         { id }
       ),
       gqlVars(
@@ -1377,6 +1423,11 @@ el("card").addEventListener("close", clearDeepLink);
 // One listener for the whole document, so it survives every table redraw.
 document.addEventListener("click", (e) => {
   // Pilot names are ordinary links now, so they are left to the browser.
+  const medal = e.target.closest(".medal");
+  if (medal) {
+    openBadgeCard(medal.dataset.badge);
+    return;
+  }
   const r = e.target.closest(".ref");
   if (r) {
     openCard(r.dataset.ref, r.dataset.type);

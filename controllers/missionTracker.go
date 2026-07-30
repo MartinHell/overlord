@@ -1,8 +1,12 @@
 package controllers
 
 import (
+	"context"
 	"sync"
+	"time"
 
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/hook"
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/world"
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
@@ -103,6 +107,10 @@ func (t *missionTracker) resume() {
 		t.current = &id
 		t.clock = row.Clock
 		logs.Sugar.Infof("Resumed mission %d at %.0fs", id, row.Clock)
+
+		// The resumed mission may predate name capture, or the fetch may have
+		// failed last time; try again if it is still anonymous.
+		go annotateMission(id, true)
 	}
 }
 
@@ -117,4 +125,51 @@ func (t *missionTracker) open(missionTime float64) {
 	t.current = &mission.MissionID
 	t.clock = missionTime
 	logs.Sugar.Infof("Mission %d started (clock %.0fs)", mission.MissionID, missionTime)
+
+	go annotateMission(mission.MissionID, false)
+}
+
+// annotateMission asks DCS what the mission is called and where it plays, and
+// writes what it learns onto the mission row. Best-effort by design: run as a
+// goroutine, failing quietly, because knowing the name is worth one attempt
+// and never worth blocking event ingestion.
+func annotateMission(missionID uint, onlyIfEmpty bool) {
+	if initializers.HookServiceClient == nil || initializers.WorldServiceClient == nil {
+		return
+	}
+
+	if onlyIfEmpty {
+		var existing models.Mission
+		if err := initializers.DB.First(&existing, missionID).Error; err == nil &&
+			(existing.Name != "" || existing.Theatre != "") {
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	updates := map[string]any{}
+
+	if resp, err := initializers.HookServiceClient.GetMissionName(ctx, &hook.GetMissionNameRequest{}); err == nil {
+		updates["name"] = resp.GetName()
+	} else {
+		logs.Sugar.Debugf("Could not fetch mission name: %v", err)
+	}
+
+	if resp, err := initializers.WorldServiceClient.GetTheatre(ctx, &world.GetTheatreRequest{}); err == nil {
+		updates["theatre"] = resp.GetTheatre()
+	} else {
+		logs.Sugar.Debugf("Could not fetch theatre: %v", err)
+	}
+
+	if len(updates) == 0 {
+		return
+	}
+
+	if err := initializers.DB.Model(&models.Mission{}).
+		Where("mission_id = ?", missionID).
+		Updates(updates).Error; err != nil {
+		logs.Sugar.Errorf("Failed to annotate mission %d: %v", missionID, err)
+	}
 }

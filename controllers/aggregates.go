@@ -43,6 +43,8 @@ func GetMissions() ([]*models.MissionSummary, error) {
 	// those ids are fetched plainly in a second query.
 	var rows []struct {
 		MissionID uint
+		Name      string
+		Theatre   string
 		Events    int
 		Duration  float64
 		FirstID   *uint
@@ -50,11 +52,13 @@ func GetMissions() ([]*models.MissionSummary, error) {
 
 	err := initializers.DB.Model(&models.Mission{}).
 		Select(`missions.mission_id AS mission_id,
+			missions.name AS name,
+			missions.theatre AS theatre,
 			COUNT(events.id) AS events,
 			COALESCE(MAX(events.mission_time), 0) AS duration,
 			MIN(events.id) AS first_id`).
 		Joins("LEFT JOIN events ON events.mission_id = missions.mission_id").
-		Group("missions.mission_id").
+		Group("missions.mission_id, missions.name, missions.theatre").
 		Order("missions.mission_id DESC").
 		Scan(&rows).Error
 	if err != nil {
@@ -91,6 +95,8 @@ func GetMissions() ([]*models.MissionSummary, error) {
 	for _, r := range rows {
 		summary := &models.MissionSummary{
 			MissionID: r.MissionID,
+			Name:      r.Name,
+			Theatre:   r.Theatre,
 			Events:    r.Events,
 			Duration:  r.Duration,
 		}

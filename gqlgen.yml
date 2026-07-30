@@ -73,6 +73,9 @@ models:
   Badge:
     model:
       - github.com/MartinHell/overlord/models.Badge
+  BadgeAward:
+    model:
+      - github.com/MartinHell/overlord/models.BadgeAward
   Mission:
     model:
       - github.com/MartinHell/overlord/models.MissionSummary

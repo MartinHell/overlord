@@ -15,6 +15,11 @@ import (
 
 type Resolver struct{}
 
+// MissionID is the resolver for the missionID field.
+func (r *badgeAwardResolver) MissionID(ctx context.Context, obj *models.BadgeAward) (string, error) {
+	return fmt.Sprintf("%v", obj.MissionID), nil
+}
+
 // ID is the resolver for the id field.
 func (r *eventResolver) ID(ctx context.Context, obj *models.Event) (string, error) {
 	return fmt.Sprintf("%v", obj.ID), nil
@@ -315,6 +320,9 @@ func (r *weaponResolver) DeletedAt(ctx context.Context, obj *models.Weapon) (*ti
 	return nil, nil
 }
 
+// BadgeAward returns generated.BadgeAwardResolver implementation.
+func (r *Resolver) BadgeAward() generated.BadgeAwardResolver { return &badgeAwardResolver{r} }
+
 // Event returns generated.EventResolver implementation.
 func (r *Resolver) Event() generated.EventResolver { return &eventResolver{r} }
 
@@ -361,6 +369,7 @@ func (r *Resolver) UnitWeaponBreakdown() generated.UnitWeaponBreakdownResolver {
 func (r *Resolver) Weapon() generated.WeaponResolver { return &weaponResolver{r} }
 
 type (
+	badgeAwardResolver          struct{ *Resolver }
 	eventResolver               struct{ *Resolver }
 	killRecordResolver          struct{ *Resolver }
 	missionResolver             struct{ *Resolver }
