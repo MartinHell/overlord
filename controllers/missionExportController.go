@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/custom"
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/timer"
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
@@ -104,10 +105,14 @@ func pullMissionExport(ctx context.Context) error {
 		return nil // malformed content is the mission's bug, not a reason to back off
 	}
 
+	// Home the rows by the mission clock, not by the last event: after a
+	// restart this poller can beat the first event to the new mission, and
+	// homing by event stamped a fresh run's tasks onto the previous one.
 	mission := CurrentMissionID()
+	if t, err := initializers.TimerServiceClient.GetTime(callCtx, &timer.GetTimeRequest{}); err == nil {
+		mission = MissionForClock(t.GetTime())
+	}
 	if mission == nil {
-		// No events yet means no mission row to hang the tasks on. The next
-		// poll after the first event will land them.
 		return nil
 	}
 

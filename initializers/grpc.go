@@ -8,6 +8,7 @@ import (
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/hook"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/timer"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/world"
 	"github.com/MartinHell/overlord/logs"
 	"google.golang.org/grpc"
@@ -29,6 +30,10 @@ var CustomServiceClient custom.CustomServiceClient
 var HookServiceClient hook.HookServiceClient
 
 var WorldServiceClient world.WorldServiceClient
+
+// TimerServiceClient reads the mission clock directly, so pollers can detect a
+// mission restart without waiting for an event to arrive.
+var TimerServiceClient timer.TimerServiceClient
 
 var GrpcClientConn *grpc.ClientConn
 
@@ -65,6 +70,7 @@ func InitGrpc() error {
 	CustomServiceClient = custom.NewCustomServiceClient(GrpcClientConn)
 	HookServiceClient = hook.NewHookServiceClient(GrpcClientConn)
 	WorldServiceClient = world.NewWorldServiceClient(GrpcClientConn)
+	TimerServiceClient = timer.NewTimerServiceClient(GrpcClientConn)
 
 	logs.Sugar.Infof("gRPC client configured for %s", addr)
 

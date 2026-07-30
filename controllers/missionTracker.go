@@ -48,15 +48,10 @@ func MissionForEvent(eventType string, missionTime float64) *uint {
 		tracker.resume()
 	}
 
-	switch {
-	case eventType == "mission_start":
+	if eventType == "mission_start" {
 		tracker.open(missionTime)
-	case tracker.current == nil:
-		tracker.open(missionTime)
-	case missionTime > 0 && tracker.clock-missionTime > missionResetSeconds:
-		// The clock went backwards: DCS restarted the mission while overlord
-		// stayed up, or came back up after being down across a restart.
-		tracker.open(missionTime)
+	} else {
+		tracker.observe(missionTime)
 	}
 
 	if missionTime > tracker.clock {
@@ -64,6 +59,44 @@ func MissionForEvent(eventType string, missionTime float64) *uint {
 	}
 
 	return tracker.current
+}
+
+// MissionForClock returns the mission a freshly read mission clock belongs
+// to, opening a new mission when the clock has gone backwards.
+//
+// This exists for the export poller. After a restart the poller can reach the
+// new mission before any event does, and homing its rows by the last event's
+// mission stamped a fresh run's tasks onto the dying seconds of the previous
+// one -- worse, the upsert overwrote that run's final task states with the new
+// run's "active". Reading the clock closes the race at its source.
+func MissionForClock(missionTime float64) *uint {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+
+	if !tracker.resumed {
+		tracker.resume()
+	}
+
+	tracker.observe(missionTime)
+
+	if missionTime > tracker.clock {
+		tracker.clock = missionTime
+	}
+
+	return tracker.current
+}
+
+// observe applies the clock-reset rule to a mission time from any source.
+// Called under the lock.
+func (t *missionTracker) observe(missionTime float64) {
+	switch {
+	case t.current == nil:
+		t.open(missionTime)
+	case missionTime > 0 && t.clock-missionTime > missionResetSeconds:
+		// The clock went backwards: DCS restarted the mission while overlord
+		// stayed up, or came back up after being down across a restart.
+		t.open(missionTime)
+	}
 }
 
 // CurrentMissionID reports the mission events are currently being tagged
