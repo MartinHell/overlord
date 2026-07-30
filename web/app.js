@@ -850,6 +850,26 @@ function collateralPanel(c, scope) {
     </p>`;
 }
 
+// The badge shelf. Earned badges are plain statements; locked ones show their
+// progress bar and keep their story quiet. Deliberately career-wide whatever
+// the scope toggle says -- a badge is something you keep.
+function drawBadges(badges) {
+  if (!badges || !badges.length) return;
+  el("badges").innerHTML = badges
+    .map((b) => {
+      const pct = b.target ? Math.min(100, Math.round((b.progress / b.target) * 100)) : 0;
+      return `<div class="medal${b.earned ? " earned" : ""}" title="${esc(b.earned ? b.detail : b.description)}">
+        <span class="medal-emoji" aria-hidden="true">${b.emoji}</span>
+        <span class="medal-name">${esc(b.name)}</span>
+        ${b.earned
+          ? `<span class="medal-detail">${esc(b.detail)}</span>`
+          : `<span class="medal-detail">${esc(b.description)}</span>
+             <span class="medal-bar"><i style="width:${pct}%"></i></span>`}
+      </div>`;
+    })
+    .join("");
+}
+
 function headline(label, value, sub) {
   return `<div><dt>${esc(label)}</dt><dd>${esc(value)}${
     sub ? ` <small>${esc(sub)}</small>` : ""
@@ -922,6 +942,7 @@ function drawPlayer() {
 
   el("player-timeline").innerHTML = timelineChart(p.timeline, p.bucketSeconds);
   el("player-collateral").innerHTML = collateralPanel(state.collateral, "player");
+  drawBadges(state.badges);
 
   const matchHay = (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)]);
 
@@ -1028,15 +1049,20 @@ async function loadPlayer() {
     }
     const m = state.scope === "mission" ? state.missionID : null;
 
-    const [profile, lookup, side] = await Promise.all([
+    const [profile, lookup, side, shelf] = await Promise.all([
       gqlVars(PLAYER_QUERY, { id, unitType, m }),
       gql(`{ missions { id } units { type displayName } weapons { type displayName } }`),
       gqlVars(
         `query($id: ID!, $m: ID) { collateral(playerID: $id, missionID: $m) { struck levelled trees structures top { displayName count tree } } }`,
         { id, m }
       ),
+      gqlVars(
+        `query($id: ID!) { badges(playerID: $id) { id name emoji description earned progress target detail } }`,
+        { id }
+      ),
     ]);
     state.collateral = side.collateral;
+    state.badges = shelf.badges;
 
     // Follow the server onto a new mission, same as the dashboard.
     const newest = lookup.missions?.[0]?.id || null;

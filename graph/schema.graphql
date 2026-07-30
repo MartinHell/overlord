@@ -308,6 +308,25 @@ type SceneryCount {
     tree: Boolean!
 }
 
+"""
+One achievement on a pilot's shelf. Computed from the events on every read
+rather than stored, so the shelf always agrees with the data, and a locked
+badge can honestly report its progress.
+"""
+type Badge {
+    id: String!
+    name: String!
+    emoji: String!
+    "How it is earned, phrased for the locked state."
+    description: String!
+    earned: Boolean!
+    "Progress towards target, for rendering the locked state."
+    progress: Int!
+    target: Int!
+    "The earned story, e.g. how many kills in which mission."
+    detail: String!
+}
+
 "One graded landing. The grade is free text as DCS reported it."
 type LandingGrade {
     playerName: String
@@ -408,6 +427,8 @@ type Query {
     weaponEffectiveness(missionID: ID): [WeaponEffectiveness!]!
     "Sorties per player and how they ended."
     playerActivity(missionID: ID): [PlayerActivity!]!
+    "Career badge shelf for one player. Never mission-scoped: a badge is something you keep."
+    badges(playerID: ID!): [Badge!]!
     "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."
     playerProfile(playerID: ID!, unitType: String, missionID: ID): PlayerProfile
     "Standout moments: first blood, longest and highest kills, most efficient weapon."

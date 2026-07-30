@@ -124,6 +124,16 @@ func (r *queryResolver) PlayerActivity(ctx context.Context, missionID *string) (
 	return controllers.GetPlayerActivity(parseOptionalID(missionID))
 }
 
+// Badges is the resolver for the badges field.
+func (r *queryResolver) Badges(ctx context.Context, playerID string) ([]*models.Badge, error) {
+	id := parseOptionalID(&playerID)
+	if id == nil {
+		return nil, nil
+	}
+
+	return controllers.GetBadges(*id)
+}
+
 // PlayerProfile is the resolver for the playerProfile field.
 func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unitType *string, missionID *string) (*models.PlayerProfileView, error) {
 	// The argument name has to match the schema, since gqlgen regenerates this
