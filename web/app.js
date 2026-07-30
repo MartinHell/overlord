@@ -69,7 +69,6 @@ const state = {
   sort: {
     weapons: { key: "shots", dir: -1 },
     pilots: { key: "takeoffs", dir: -1 },
-    loadout: { key: "shots", dir: -1 },
     traps: { key: "missionTime", dir: -1 },
     log: { key: "id", dir: -1 },
     "p-aircraft": { key: "sorties", dir: -1 },
@@ -104,7 +103,6 @@ function pref(id, name) {
 const QUERY = `{
   killsByCoalition { coalition kills teamkills }
   weaponEffectiveness { weaponType shots hits kills hitsPerShot killsPerShot }
-  shotsByPlayers { playerID playerName units { unitType weapons { weaponType count } } }
   playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
   landingGrades(first: 40) { playerName unitType place grade missionTime }
   records {
@@ -206,6 +204,14 @@ function matches(haystack) {
   if (!state.query) return true;
   return haystack.join(" ").toLowerCase().includes(state.query);
 }
+
+// Search has to match what is on the screen, not the identifier behind it.
+// Typing "Phoenix" found nothing, because the row says AIM-54C Phoenix and the
+// haystack held AIM_54C_Mk47 -- the one string the reader never sees. Both go
+// in, so either works.
+const unitHay = (t) => (t ? [t, unitName(t)] : []);
+const weaponHay = (t) => (t ? [t, weaponName(t)] : []);
+const playerHay = (n) => (n ? [n, playerLabel(n)] : []);
 
 // Guns report hits with no shot events; airframes appear as weapons when DCS
 // names the aircraft for a collision.
@@ -312,7 +318,7 @@ function drawWeapons(rows) {
   const filtered = rows
     .filter((r) => r.shots || r.hits || r.kills)
     .filter((r) => state.weaponClass === "all" || storeClass(r) === state.weaponClass)
-    .filter((r) => matches([r.weaponType]));
+    .filter((r) => matches(weaponHay(r.weaponType)));
 
   const max = Math.max(1, ...filtered.map((r) => r.shots));
 
@@ -350,7 +356,7 @@ function drawPilots(rows) {
         !isAIName(r.playerName) ||
         r.takeoffs || r.landings || r.crashes || r.ejections || r.deaths
     )
-    .filter((r) => matches([r.playerName]));
+    .filter((r) => matches(playerHay(r.playerName)));
 
   render(
     "pilots",
@@ -375,7 +381,9 @@ function drawPilots(rows) {
 }
 
 function drawTraps(rows) {
-  const filtered = rows.filter((r) => matches([r.playerName, r.unitType, r.place, r.grade]));
+  const filtered = rows.filter((r) =>
+    matches([...playerHay(r.playerName), ...unitHay(r.unitType), r.place, r.grade])
+  );
 
   render(
     "traps",
@@ -397,44 +405,6 @@ function drawTraps(rows) {
   );
 }
 
-// Flattened so it can be sorted and filtered as one table rather than a tree.
-function drawLoadout(players) {
-  const rows = [];
-  for (const p of players) {
-    for (const u of p.units || []) {
-      for (const w of u.weapons || []) {
-        rows.push({
-          playerID: p.playerID,
-          playerName: p.playerName,
-          unitType: u.unitType,
-          weaponType: w.weaponType,
-          shots: w.count,
-        });
-      }
-    }
-  }
-
-  const filtered = rows.filter((r) => matches([r.playerName, r.unitType, r.weaponType]));
-  const max = Math.max(1, ...filtered.map((r) => r.shots));
-
-  render(
-    "loadout",
-    [
-      { label: "Pilot", key: "playerName" },
-      { label: "Aircraft", key: "unitType" },
-      { label: "Weapon", key: "weaponType" },
-      { label: "Shots", key: "shots", num: true },
-    ],
-    sortRows(filtered, "loadout"),
-    (r) => `<tr>
-      <td class="name">${pref(r.playerID, r.playerName)}</td>
-      <td>${ref("unit", r.unitType)}</td>
-      <td>${ref("weapon", r.weaponType)}</td>
-      <td class="num"><span class="bar" style="width:${(r.shots / max) * 44}px"></span>${r.shots}</td>
-    </tr>`
-  );
-}
-
 function drawLog(connection) {
   const all = (connection?.edges || []).map((e) => ({ ...e.node, id: Number(e.node.id) }));
 
@@ -444,9 +414,12 @@ function drawLog(connection) {
     .filter((n) =>
       matches([
         n.event, eventLabel(n.event),
-        n.player?.playerName, n.initiator?.type, n.initiatorName,
-        n.initiatorCallsign, n.initiatorGroup, n.weapon?.type,
-        n.target?.unit?.type, n.targetName, n.place,
+        ...playerHay(n.player?.playerName),
+        ...unitHay(n.initiator?.type),
+        n.initiatorName, n.initiatorCallsign, n.initiatorGroup,
+        ...weaponHay(n.weapon?.type),
+        ...unitHay(n.target?.unit?.type),
+        n.targetName, n.place,
       ])
     )
     .map((n) => ({
@@ -509,7 +482,6 @@ function draw() {
   drawWeapons(d.weaponEffectiveness || []);
   drawPilots(d.playerActivity || []);
   drawTraps(d.landingGrades || []);
-  drawLoadout(d.shotsByPlayers || []);
   drawLog(state.log);
   drawRecords(d.records);
   el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
@@ -889,11 +861,13 @@ function drawPlayer() {
   el("player-timeline").innerHTML = timelineChart(p.timeline, p.bucketSeconds);
   el("player-collateral").innerHTML = collateralPanel(state.collateral, "player");
 
-  el("p-matchups-wrap").innerHTML = heatmap(p.matchups, {
+  const matchHay = (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)]);
+
+  el("p-matchups-wrap").innerHTML = heatmap((p.matchups || []).filter(matchHay), {
     rowNoun: "aircraft",
     colNoun: "target types",
   });
-  el("p-killedby-wrap").innerHTML = heatmap(p.killedBy, {
+  el("p-killedby-wrap").innerHTML = heatmap((p.killedBy || []).filter(matchHay), {
     rowNoun: "aircraft",
     colNoun: "attacker types",
   });
@@ -914,7 +888,7 @@ function drawPlayer() {
       { label: "Kills / shot", key: "killsPerShot", num: true },
       { label: "" },
     ],
-    sortRows(p.aircraft || [], "p-aircraft"),
+    sortRows((p.aircraft || []).filter((a) => matches(unitHay(a.unitType))), "p-aircraft"),
     (a) => `<tr>
       <td class="name">${ref("unit", a.unitType)}</td>
       <td class="num">${num(a.sorties)}</td>
@@ -938,7 +912,7 @@ function drawPlayer() {
       { label: "Kills", key: "kills", num: true },
       { label: "Kills / shot", key: "killsPerShot", num: true },
     ],
-    sortRows(p.weapons || [], "p-weapons"),
+    sortRows((p.weapons || []).filter((w) => matches(weaponHay(w.weaponType))), "p-weapons"),
     (w) => `<tr>
       <td class="name">${ref("weapon", w.weaponType)}</td>
       <td class="num">${num(w.shots)}</td>
@@ -957,7 +931,10 @@ function drawPlayer() {
       { label: "Airfield", key: "place" },
       { label: "Grade", key: "grade" },
     ],
-    sortRows(p.landingGrades || [], "p-grades"),
+    sortRows(
+      (p.landingGrades || []).filter((g) => matches([...unitHay(g.unitType), g.place, g.grade])),
+      "p-grades"
+    ),
     (g) => `<tr>
       <td class="num">${clock(g.missionTime)}</td>
       <td>${g.unitType ? ref("unit", g.unitType) : "—"}</td>
@@ -1276,6 +1253,13 @@ if (PAGE === "dashboard") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
     draw();
+  });
+}
+
+if (PAGE === "player") {
+  el("q").addEventListener("input", (e) => {
+    state.query = e.target.value.trim().toLowerCase();
+    drawPlayer();
   });
 }
 
