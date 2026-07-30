@@ -948,3 +948,111 @@ footer {
 }
 
 .medal-bar.big { display: block; height: 5px; margin-top: 0.8rem; }
+
+/* ---- hero scoreboard ---- */
+
+/* Gold is for glory and nothing else: record values, earned badges, first
+   place. Grey stays structural, blue and red stay coalition. One warm accent,
+   spent only where something was achieved. */
+:root[data-theme="light"] { --gold: #9a6b06; --gold-dim: #c9a44a; }
+:root[data-theme="dark"] { --gold: #e3b34c; --gold-dim: #8a6d33; }
+
+.hero { padding-top: 1.35rem; }
+
+.hero-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.1rem;
+}
+.hero-head h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.hero-sub { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.8125rem; }
+
+.hero-clock { margin: 0; text-align: right; }
+.hero-clock dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hero-clock dd {
+  margin: 0.1rem 0 0;
+  font: 600 1.6rem/1.1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tug {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+.tug-num {
+  font: 700 1.9rem/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.tug-num.tug-blue { color: var(--blue); }
+.tug-num.tug-red { color: var(--red); }
+
+.tug-bar {
+  flex: 1;
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.tug-bar i { display: block; height: 100%; transition: width 600ms ease; }
+#tug-blue-bar { background: var(--blue); }
+#tug-red-bar { background: var(--red); margin-left: auto; }
+
+.killfeed {
+  margin: 1.1rem 0 0;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+.killfeed li { font-size: 0.8125rem; }
+.killfeed .kf-time {
+  margin-right: 0.5rem;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.killfeed .kf-weapon { margin-left: 0.5rem; color: var(--text-dim); font-size: 0.75rem; }
+.killfeed .to { color: var(--text-faint); padding: 0 0.15rem; }
+.killfeed li:first-child { font-weight: 600; }
+
+/* Glory, in gold. */
+.record dd b { color: var(--gold); }
+.medal.earned { border-color: var(--gold-dim); }
+.medal.earned .medal-name { color: var(--gold); }
+.medal-count { background: var(--gold); color: var(--surface); }
+
+.grid td.rank { font-size: 0.9375rem; }
+tr.first-place td { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+tr.first-place .name a { color: var(--gold); }
+
+#missionmap {
+  height: 440px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+#missionmap.map-empty::after {
+  content: "No geolocated kills in this view yet.";
+  display: block;
+  padding: 1rem;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+}

@@ -115,10 +115,10 @@ function dashQuery() {
   const m = midArg();
   const p = m ? `(${m})` : "";
   return `{
-  missions { id startedAt events duration }
+  missions { id name theatre startedAt events duration }
   killsByCoalition${p} { coalition kills teamkills }
   weaponEffectiveness${p} { weaponType shots hits kills hitsPerShot killsPerShot }
-  playerActivity${p} { playerID playerName takeoffs landings crashes ejections deaths }
+  playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }
   landingGrades(first: 40${m ? ", " + m : ""}) { playerName unitType place grade missionTime }
   records${p} {
     firstBlood { playerID playerName unitType targetType missionTime }
@@ -128,6 +128,17 @@ function dashQuery() {
   }
   collateral${p} { struck levelled trees structures top { displayName count tree } }
   missionTasks${p} { taskKey title state playerName points }
+  killPoints${p} { lat lon coalition playerName unitType targetType weaponType missionTime }
+  feed: events(first: 8, eventType: "kill"${m ? ", " + m : ""}) {
+    edges { node {
+      id missionTime coalition
+      player { playerID playerName }
+      initiator { type }
+      weapon { type }
+      target { unit { type } }
+      targetName
+    } }
+  }
   units { type displayName }
   weapons { type displayName }
 }`;
@@ -308,7 +319,7 @@ function render(table, columns, rows, renderRow, redraw = draw) {
   const held =
     node.contains(document.activeElement) && document.activeElement.dataset.sort;
 
-  node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${rows.map(renderRow).join("")}</tbody>`;
+  node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${rows.map((r, i) => renderRow(r, i)).join("")}</tbody>`;
 
   if (held) node.querySelector(`button[data-sort="${CSS.escape(held)}"]`)?.focus();
 
@@ -325,24 +336,74 @@ function render(table, columns, rows, renderRow, redraw = draw) {
 
 // --- sections --------------------------------------------------------------
 
-function drawCoalition(rows) {
-  const order = { blue: 0, red: 1, neutral: 2, unknown: 3 };
-  const sorted = [...rows].sort((a, b) => (order[a.coalition] ?? 9) - (order[b.coalition] ?? 9));
-  const max = Math.max(1, ...sorted.map((r) => r.kills));
+// The scoreboard. Blue against red as a tug of war, the mission named, and
+// the latest kills as a feed -- the one panel composed for drama on purpose.
+function drawHero(d) {
+  const missions = d.missions || [];
+  const current =
+    state.scope === "mission" && state.missionID
+      ? missions.find((m) => m.id === state.missionID)
+      : null;
 
-  el("coalition").innerHTML = sorted
-    .map(
-      (c) => `<div class="side" data-side="${esc(c.coalition)}">
-        <div class="side-top">
-          <span class="side-name">${esc(c.coalition)}</span>
-          <span class="side-num"><b>${c.kills}</b> <i>kills</i>${
-            c.teamkills ? ` <span class="tk">· ${c.teamkills} friendly fire</span>` : ""
-          }</span>
-        </div>
-        <span class="meter"><span style="width:${(c.kills / max) * 100}%"></span></span>
-      </div>`
-    )
-    .join("");
+  if (current) {
+    el("hero-title").textContent = current.name || `Mission #${current.id}`;
+    const started = new Date(current.startedAt).toLocaleString([], {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+    el("hero-sub").textContent = [
+      current.theatre || "Unknown map",
+      `mission #${current.id}`,
+      `started ${started}`,
+    ].join(" · ");
+  } else {
+    el("hero-title").textContent = "All recorded missions";
+    el("hero-sub").textContent = `${missions.length} missions on file`;
+  }
+
+  const nodes = (state.log?.edges || []).map((e) => e.node);
+  el("hero-clock").textContent = nodes.length ? clock(nodes[0].missionTime || 0) : "--:--:--";
+
+  const tally = { blue: 0, red: 0, unknown: 0, teamkills: 0 };
+  for (const c of d.killsByCoalition || []) {
+    if (c.coalition === "blue" || c.coalition === "red") tally[c.coalition] = c.kills;
+    else tally.unknown += c.kills;
+    tally.teamkills += c.teamkills || 0;
+  }
+
+  setStat("tug-blue", String(tally.blue));
+  setStat("tug-red", String(tally.red));
+  const total = Math.max(1, tally.blue + tally.red);
+  el("tug-blue-bar").style.width = `${(tally.blue / total) * 100}%`;
+  el("tug-red-bar").style.width = `${(tally.red / total) * 100}%`;
+
+  el("tug-note").textContent = [
+    tally.unknown ? `${tally.unknown} kills with no side recorded` : "",
+    tally.teamkills ? `${tally.teamkills} friendly fire` : "",
+  ].filter(Boolean).join(" · ");
+
+  const feed = (d.feed?.edges || []).map((e) => e.node);
+  el("killfeed").innerHTML = feed.length
+    ? feed
+        .map((n) => {
+          const side = n.coalition === "blue" || n.coalition === "red"
+            ? `<span class="flag flag-${esc(n.coalition)}"></span>`
+            : `<span class="flag"></span>`;
+          const who = n.player?.playerID
+            ? pref(n.player.playerID, n.player.playerName)
+            : esc(playerLabel(n.player?.playerName));
+          const victim = n.target?.unit?.type
+            ? ref("unit", n.target.unit.type)
+            : esc(n.targetName || "—");
+          return `<li>
+            <span class="kf-time">${clock(n.missionTime)}</span>
+            ${side}${who}
+            ${n.initiator?.type ? `· ${ref("unit", n.initiator.type)}` : ""}
+            <span class="to">→</span> ${victim}
+            ${n.weapon?.type ? `<span class="kf-weapon">${esc(weaponName(n.weapon.type))}</span>` : ""}
+          </li>`;
+        })
+        .join("")
+    : `<li class="none">No kills yet. The feed starts with the first one.</li>`;
 }
 
 function drawWeapons(rows) {
@@ -389,22 +450,45 @@ function drawPilots(rows) {
     )
     .filter((r) => matches(playerHay(r.playerName)));
 
+  // Ranked by score when the mission awards any, kills otherwise. The medals
+  // are the point: a leaderboard nobody can win is just a table.
+  const scoreFor = (name) => {
+    let sum = 0;
+    for (const t of state.data?.missionTasks || []) if (t.playerName === name) sum += t.points;
+    return sum;
+  };
+  const anyScore = (state.data?.missionTasks || []).some((t) => t.points > 0);
+
+  const ranked = filtered
+    .map((r) => ({
+      ...r,
+      score: scoreFor(r.playerName),
+      kd: (r.deaths + r.crashes) > 0 ? r.kills / (r.deaths + r.crashes) : r.kills,
+    }))
+    .sort((a, b) => (anyScore && b.score !== a.score ? b.score - a.score : b.kills - a.kills));
+
+  const medals = ["🥇", "🥈", "🥉"];
+
   render(
     "pilots",
     [
+      { label: "#" },
       { label: "Pilot", key: "playerName" },
+      { label: "Kills", key: "kills", num: true },
+      { label: "K/D", key: "kd", num: true },
+      ...(anyScore ? [{ label: "Score", key: "score", num: true }] : []),
       { label: "Takeoffs", key: "takeoffs", num: true },
-      { label: "Landings", key: "landings", num: true },
-      { label: "Crashes", key: "crashes", num: true },
       { label: "Ejections", key: "ejections", num: true },
       { label: "Deaths", key: "deaths", num: true },
     ],
-    sortRows(filtered, "pilots"),
-    (r) => `<tr>
+    ranked,
+    (r, i) => `<tr${i === 0 && (r.kills || r.score) ? ' class="first-place"' : ""}>
+      <td class="rank">${medals[i] || i + 1}</td>
       <td class="name">${pref(r.playerID, r.playerName)}</td>
+      <td class="num">${num(r.kills)}</td>
+      <td class="num">${ratio(r.kd)}</td>
+      ${anyScore ? `<td class="num">${num(r.score)}</td>` : ""}
       <td class="num">${num(r.takeoffs)}</td>
-      <td class="num">${num(r.landings)}</td>
-      <td class="num">${num(r.crashes)}</td>
       <td class="num">${num(r.ejections)}</td>
       <td class="num">${num(r.deaths)}</td>
     </tr>`
@@ -516,13 +600,14 @@ function draw() {
   for (const u of d.units || []) names.unit.set(u.type, u.displayName);
   for (const w of d.weapons || []) names.weapon.set(w.type, w.displayName);
 
-  drawCoalition(d.killsByCoalition || []);
+  drawHero(d);
   drawWeapons(d.weaponEffectiveness || []);
   drawPilots(d.playerActivity || []);
   drawTraps(d.landingGrades || []);
   drawLog(state.log);
   drawRecords(d.records);
   drawTasks("tasks", "p-tasks", d.missionTasks);
+  drawMissionMap(d.killPoints);
   el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
 
   const nodes = (state.log?.edges || []).map((e) => e.node);
@@ -934,6 +1019,64 @@ function drawKillMap(points) {
   if (!killMapFitted) {
     killMap.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.2));
     killMapFitted = true;
+  }
+}
+
+// The mission map: both sides' kills, coloured by coalition. Same rules as
+// the pilot map -- the map object survives refreshes, only the dots swap.
+let missionMap = null;
+let missionLayer = null;
+let missionMapFitted = false;
+
+const SIDE_FILL = { blue: "#2563c9", red: "#c0382e" };
+
+function drawMissionMap(points) {
+  const host = el("missionmap");
+  if (!host) return;
+
+  if (typeof L === "undefined") {
+    host.innerHTML = `<p class="none">The map library could not load — offline? The dots will be back with the network.</p>`;
+    return;
+  }
+
+  if (!missionMap) {
+    missionMap = L.map(host, { zoomControl: true, worldCopyJump: true });
+    missionMap.setView([42.5, 42.0], 7);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 15,
+      className: "map-tiles",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(missionMap);
+    missionLayer = L.layerGroup().addTo(missionMap);
+  }
+
+  missionLayer.clearLayers();
+
+  const pts = points || [];
+  if (!pts.length) {
+    host.classList.add("map-empty");
+    return;
+  }
+  host.classList.remove("map-empty");
+
+  for (const p of pts) {
+    L.circleMarker([p.lat, p.lon], {
+      radius: 5,
+      weight: 1,
+      color: "#ffffff",
+      fillColor: SIDE_FILL[p.coalition] || "#7a8494",
+      fillOpacity: 0.6,
+    })
+      .bindTooltip(
+        `${esc(playerLabel(p.playerName))}${p.unitType ? " · " + esc(unitName(p.unitType)) : ""} → ` +
+          `${esc(unitName(p.targetType || ""))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
+      )
+      .addTo(missionLayer);
+  }
+
+  if (!missionMapFitted) {
+    missionMap.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.2));
+    missionMapFitted = true;
   }
 }
 

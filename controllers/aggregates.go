@@ -322,12 +322,15 @@ func GetPlayerActivity(missionID *uint) ([]*models.PlayerActivity, error) {
 		Scopes(scopeMission(missionID)).
 		Select(`players.player_id AS player_id,
 			players.player_name AS player_name,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills,
 			SUM(CASE WHEN events.event IN ('takeoff', 'runway_takeoff') THEN 1 ELSE 0 END) AS takeoffs,
 			SUM(CASE WHEN events.event IN ('land', 'runway_touch') THEN 1 ELSE 0 END) AS landings,
 			SUM(CASE WHEN events.event = 'crash' THEN 1 ELSE 0 END) AS crashes,
 			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections,
 			SUM(CASE WHEN events.event = 'pilot_dead' THEN 1 ELSE 0 END) AS deaths`).
 		Joins("JOIN players ON players.player_id = events.player_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Group("players.player_id, players.player_name").
 		Order("players.player_name").
 		Scan(&rows).Error
@@ -879,6 +882,44 @@ func haversineM(lat1, lon1, lat2, lon2 float64) float64 {
 		math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dLon/2)*math.Sin(dLon/2)
 
 	return earthRadiusM * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+}
+
+// GetKillPoints returns every geolocated kill in scope, both sides, for the
+// mission map. The victim's position wins; the shooter's is the fallback.
+func GetKillPoints(missionID *uint) ([]*models.MapKillPoint, error) {
+	var points []models.MapKillPoint
+
+	err := initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
+		Select(`CASE WHEN events.target_lat <> 0 THEN events.target_lat ELSE events.initiator_lat END AS lat,
+			CASE WHEN events.target_lat <> 0 THEN events.target_lon ELSE events.initiator_lon END AS lon,
+			events.coalition AS coalition,
+			players.player_name AS player_name,
+			units.type AS unit_type,
+			tunits.type AS target_type,
+			weapons.type AS weapon_type,
+			events.mission_time AS mission_time`).
+		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN players ON players.player_id = events.player_id").
+		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
+		Joins("LEFT JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
+		Joins("LEFT JOIN weapons ON weapons.weapon_id = events.weapon_id").
+		Where(`events.event = 'kill' AND targets.kind <> ?
+			AND (events.target_lat <> 0 OR events.initiator_lat <> 0)`, models.ObjectKindScenery).
+		Order("events.id DESC").
+		Limit(1000).
+		Scan(&points).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to load mission kill points: %v", err)
+		return nil, err
+	}
+
+	result := make([]*models.MapKillPoint, 0, len(points))
+	for i := range points {
+		result = append(result, &points[i])
+	}
+
+	return result, nil
 }
 
 // GetCollateral counts what was hit that was never a threat: trees, walls,

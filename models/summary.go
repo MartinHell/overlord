@@ -44,11 +44,13 @@ func (w *WeaponEffectiveness) KillsPerShot() float64 {
 type PlayerActivity struct {
 	PlayerID   uint
 	PlayerName string
-	Takeoffs   int
-	Landings   int
-	Crashes    int
-	Ejections  int
-	Deaths     int
+	// Kills excludes scenery, like every other kill figure.
+	Kills     int
+	Takeoffs  int
+	Landings  int
+	Crashes   int
+	Ejections int
+	Deaths    int
 }
 
 // PlayerProfileView is everything recorded about one player, human or AI.
@@ -101,6 +103,19 @@ type PlayerProfileView struct {
 	// absent entirely when it reported neither -- which is roughly half of
 	// kills, a caveat the map has to state rather than hide.
 	KillPoints []*KillPoint
+}
+
+// MapKillPoint is one kill with a place and a side, for the mission map that
+// shows both coalitions at once.
+type MapKillPoint struct {
+	Lat         float64
+	Lon         float64
+	Coalition   string
+	PlayerName  string
+	UnitType    string
+	TargetType  string
+	WeaponType  string
+	MissionTime float64
 }
 
 // KillPoint is one kill with a place.

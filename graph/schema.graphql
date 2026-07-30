@@ -131,6 +131,8 @@ type WeaponEffectiveness {
 type PlayerActivity {
     playerID: ID!
     playerName: String!
+    "Excludes scenery, like every other kill figure."
+    kills: Int!
     takeoffs: Int!
     landings: Int!
     crashes: Int!
@@ -192,6 +194,18 @@ type PlayerProfile {
 
     "Where the kills happened. Roughly half of kills carry no position and are absent here."
     killPoints: [KillPoint!]!
+}
+
+"One kill with a place and a side, for the mission map."
+type MapKillPoint {
+    lat: Float!
+    lon: Float!
+    coalition: String!
+    playerName: String!
+    unitType: String
+    targetType: String
+    weaponType: String
+    missionTime: Float!
 }
 
 "One kill with a place: the victim's position where reported, the shooter's otherwise."
@@ -481,6 +495,8 @@ type Query {
     playerProfile(playerID: ID!, unitType: String, missionID: ID): PlayerProfile
     "Standout moments: first blood, longest and highest kills, most efficient weapon."
     records(missionID: ID): Records
+    "Every geolocated kill in scope, both sides, for the mission map."
+    killPoints(missionID: ID): [MapKillPoint!]!
     "Scenery caught in the blast. Omit playerID for the whole mission, including the majority DCS reports with no initiator."
     collateral(playerID: ID, missionID: ID): Collateral
     "Recent graded landings, newest first."

@@ -94,6 +94,9 @@ models:
   SceneryCount:
     model:
       - github.com/MartinHell/overlord/models.SceneryCount
+  MapKillPoint:
+    model:
+      - github.com/MartinHell/overlord/models.MapKillPoint
   KillPoint:
     model:
       - github.com/MartinHell/overlord/models.KillPoint

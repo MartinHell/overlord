@@ -166,6 +166,11 @@ func (r *queryResolver) Records(ctx context.Context, missionID *string) (*models
 	return controllers.GetRecords(parseOptionalID(missionID))
 }
 
+// KillPoints is the resolver for the killPoints field.
+func (r *queryResolver) KillPoints(ctx context.Context, missionID *string) ([]*models.MapKillPoint, error) {
+	return controllers.GetKillPoints(parseOptionalID(missionID))
+}
+
 // Collateral is the resolver for the collateral field.
 func (r *queryResolver) Collateral(ctx context.Context, playerID *string, missionID *string) (*models.Collateral, error) {
 	// No player means the whole mission, which is the interesting number: DCS
