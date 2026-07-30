@@ -94,9 +94,15 @@ require points to be conserved. Both conventions work mechanically.
 
 Entries should outlive the thing that created them: keep publishing a closed
 package as `done`/`failed` rather than dropping it, so a pilot's work does not
-vanish at the moment it paid off. (Dropping an entry does not delete the
-stored row — the newest published state simply stays — but keeping it in the
-export is clearer about intent.)
+vanish at the moment it paid off.
+
+Absence is information too: **an entry dropped from the export is removed from
+the current mission's panel** on the next poll. The snapshot is the truth in
+both directions — publish what should persist, drop what should disappear.
+That also means "pilot left the package" is a real design choice: publish the
+per-pilot entry as `failed` (or your word for it) to keep the record, or drop
+it to make it vanish. Finished missions are never reconciled; they keep
+whatever their final published set was.
 
 ## Player identity
 

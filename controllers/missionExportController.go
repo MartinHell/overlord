@@ -138,10 +138,13 @@ func pullMissionExport(ctx context.Context) error {
 		return nil
 	}
 
+	published := make([]string, 0, len(export.Tasks))
+
 	for _, t := range export.Tasks {
 		if t.ID == "" {
 			continue
 		}
+		published = append(published, t.ID)
 
 		row := models.MissionTask{
 			MissionID:  *mission,
@@ -161,6 +164,20 @@ func pullMissionExport(ctx context.Context) error {
 		}).Create(&row).Error; err != nil {
 			logs.Sugar.Errorf("Failed to upsert mission task %q: %v", t.ID, err)
 		}
+	}
+
+	// The export is a snapshot, so absence is information too: a row the
+	// mission stopped publishing is removed rather than kept in its last
+	// state. Keeping it turned every dropped entry into a zombie -- a package
+	// that closed at 20:49 still read "active" at 20:53 and would have read
+	// "active" forever. Only the mission being polled is reconciled; finished
+	// missions keep whatever their final published set was.
+	prune := initializers.DB.Where("mission_id = ?", *mission)
+	if len(published) > 0 {
+		prune = prune.Where("task_key NOT IN ?", published)
+	}
+	if err := prune.Delete(&models.MissionTask{}).Error; err != nil {
+		logs.Sugar.Errorf("Failed to prune dropped mission tasks: %v", err)
 	}
 
 	return nil
