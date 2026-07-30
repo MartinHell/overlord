@@ -9,8 +9,15 @@
  * Both themes are written out once and selected by data-theme on <html>. An
  * inline script in index.html sets that attribute before first paint, so there
  * is no prefers-color-scheme block here and no flash of the wrong theme.
+ *
+ * The light tokens also apply to a bare :root so the page is still styled if
+ * that script never runs. Light rather than the system preference because
+ * matching the preference without JS would mean duplicating the dark block in
+ * a media query, and a scriptless visitor sees no data anyway -- this only has
+ * to not be unstyled.
  */
 
+:root,
 :root[data-theme="light"] {
   color-scheme: light;
 
@@ -264,6 +271,11 @@ main {
   font-weight: 600;
   letter-spacing: -0.005em;
 }
+
+/* Headings break into even lines, explanatory prose avoids a lone word on its
+   last line. Both are ignored by browsers that lack them. */
+h1, h2, h3 { text-wrap: balance; }
+.note, .chart-scale { text-wrap: pretty; }
 .chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .chips button { font-size: 0.75rem; padding: 0.25rem 0.6rem; }
 
@@ -510,6 +522,18 @@ table.hm thead th { vertical-align: bottom; }
 .tw { overflow: auto; }
 .tw-tall { max-height: 30rem; }
 
+/* The bottom panels are heavy (the log alone is 200 rows, redrawn every poll)
+   and sit below the fold on every viewport, so the browser may skip rendering
+   them until they are scrolled near. The intrinsic size keeps the scrollbar
+   honest before first render; auto remembers the real height afterwards. Not
+   applied to the map panels: Leaflet sizes itself from its container and lays
+   the tiles out wrong if it measures while rendering is skipped. */
+#p-log, #p-collateral {
+  content-visibility: auto;
+}
+#p-log { contain-intrinsic-size: auto none auto 38rem; }
+#p-collateral { contain-intrinsic-size: auto none auto 18rem; }
+
 table.grid {
   width: 100%;
   border-collapse: collapse;
@@ -642,7 +666,7 @@ dialog.card {
    every engine, so a var() here silently resolves to nothing in anything
    slightly older and the page behind shows through unshaded. */
 dialog.card::backdrop { backdrop-filter: blur(3px); background: rgb(6 8 11 / 68%); }
-:root[data-theme="light"] dialog.card::backdrop { background: rgb(30 34 40 / 32%); }
+:root:not([data-theme="dark"]) dialog.card::backdrop { background: rgb(30 34 40 / 32%); }
 
 .card-head {
   display: flex;
@@ -954,6 +978,7 @@ footer {
 /* Gold is for glory and nothing else: record values, earned badges, first
    place. Grey stays structural, blue and red stay coalition. One warm accent,
    spent only where something was achieved. */
+:root,
 :root[data-theme="light"] { --gold: #9a6b06; --gold-dim: #c9a44a; }
 :root[data-theme="dark"] { --gold: #e3b34c; --gold-dim: #8a6d33; }
 

@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Declared before any CSS arrives so the browser paints the canvas in a
+     sane colour from the first frame. app.js narrows it to the chosen theme. -->
+<meta name="color-scheme" content="light dark">
 <title>Pilot — Overlord</title>
 <link rel="stylesheet" href="/app.css">
 <!-- Leaflet, the one external dependency in the dashboard. Pinned and
@@ -128,7 +131,7 @@
 </main>
 
 <!-- Same reference card as the dashboard; see index.html. -->
-<dialog id="card" class="card" aria-labelledby="card-name">
+<dialog id="card" class="card" closedby="any" aria-labelledby="card-name">
   <div class="card-head">
     <div>
       <h3 id="card-name">—</h3>
