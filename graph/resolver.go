@@ -124,6 +124,11 @@ func (r *queryResolver) PlayerActivity(ctx context.Context, missionID *string) (
 	return controllers.GetPlayerActivity(parseOptionalID(missionID))
 }
 
+// MissionTasks is the resolver for the missionTasks field.
+func (r *queryResolver) MissionTasks(ctx context.Context, missionID *string) ([]*models.MissionTask, error) {
+	return controllers.GetMissionTasks(parseOptionalID(missionID))
+}
+
 // Badges is the resolver for the badges field.
 func (r *queryResolver) Badges(ctx context.Context, playerID string) ([]*models.Badge, error) {
 	id := parseOptionalID(&playerID)

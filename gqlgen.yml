@@ -67,6 +67,9 @@ models:
   Matchup:
     model:
       - github.com/MartinHell/overlord/models.Matchup
+  MissionTask:
+    model:
+      - github.com/MartinHell/overlord/models.MissionTask
   Badge:
     model:
       - github.com/MartinHell/overlord/models.Badge

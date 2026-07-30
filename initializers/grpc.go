@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/custom"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
 	"github.com/MartinHell/overlord/logs"
@@ -14,6 +15,11 @@ import (
 var NetServiceClient net.NetServiceClient
 
 var MissionServiceClient mission.MissionServiceClient
+
+// CustomServiceClient reaches the mission scripting environment, used to poll
+// the OVERLORD_EXPORT score table. Its Eval method only works when the DCS
+// side sets evalEnabled = true.
+var CustomServiceClient custom.CustomServiceClient
 
 var GrpcClientConn *grpc.ClientConn
 
@@ -47,6 +53,7 @@ func InitGrpc() error {
 
 	MissionServiceClient = mission.NewMissionServiceClient(GrpcClientConn)
 	NetServiceClient = net.NewNetServiceClient(GrpcClientConn)
+	CustomServiceClient = custom.NewCustomServiceClient(GrpcClientConn)
 
 	logs.Sugar.Infof("gRPC client configured for %s", addr)
 

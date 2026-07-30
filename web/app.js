@@ -127,6 +127,7 @@ function dashQuery() {
     deadliest { weaponType shots kills killsPerShot }
   }
   collateral${p} { struck levelled trees structures top { displayName count tree } }
+  missionTasks${p} { taskKey title state playerName points }
   units { type displayName }
   weapons { type displayName }
 }`;
@@ -521,6 +522,7 @@ function draw() {
   drawTraps(d.landingGrades || []);
   drawLog(state.log);
   drawRecords(d.records);
+  drawTasks("tasks", "p-tasks", d.missionTasks);
   el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
 
   const nodes = (state.log?.edges || []).map((e) => e.node);
@@ -814,6 +816,32 @@ function drawRecords(r) {
      </p>`;
 }
 
+// Mission tasks, when the mission exports any. The panel stays hidden rather
+// than showing an empty table on servers whose missions say nothing.
+function drawTasks(tableID, panelID, tasks) {
+  const panel = el(panelID);
+  if (!panel) return;
+  if (!tasks || !tasks.length) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  el(tableID).innerHTML =
+    `<thead><tr><th>Task</th><th>State</th><th>Pilot</th><th class="num">Points</th></tr></thead><tbody>` +
+    tasks
+      .map(
+        (t) => `<tr>
+          <td class="name">${esc(t.title || t.taskKey)}</td>
+          <td><span class="ev ${t.state === "done" ? "ev-kill" : t.state === "failed" ? "ev-loss" : ""}">${esc(t.state || "—")}</span></td>
+          <td>${esc(t.playerName || "—")}</td>
+          <td class="num">${num(t.points)}</td>
+        </tr>`
+      )
+      .join("") +
+    `</tbody>`;
+}
+
 // Scenery. Deliberately light, deliberately apart from the real figures, and
 // deliberately not called "destroyed": DCS emits a hit when a blast touches a
 // tree and a kill only when it actually falls, and on this data that is 25,503
@@ -1003,6 +1031,11 @@ function drawPlayer() {
   el("player-collateral").innerHTML = collateralPanel(state.collateral, "player");
   drawBadges(state.badges);
   drawKillMap(p.killPoints);
+  drawTasks(
+    "player-tasks",
+    "p-player-tasks",
+    (state.tasks || []).filter((t) => t.playerName === p.playerName)
+  );
 
   const matchHay = (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)]);
 
@@ -1109,7 +1142,7 @@ async function loadPlayer() {
     }
     const m = state.scope === "mission" ? state.missionID : null;
 
-    const [profile, lookup, side, shelf] = await Promise.all([
+    const [profile, lookup, side, shelf, taskData] = await Promise.all([
       gqlVars(PLAYER_QUERY, { id, unitType, m }),
       gql(`{ missions { id } units { type displayName } weapons { type displayName } }`),
       gqlVars(
@@ -1120,9 +1153,14 @@ async function loadPlayer() {
         `query($id: ID!) { badges(playerID: $id) { id name emoji description earned progress target detail } }`,
         { id }
       ),
+      gqlVars(
+        `query($m: ID) { missionTasks(missionID: $m) { taskKey title state playerName points } }`,
+        { m }
+      ),
     ]);
     state.collateral = side.collateral;
     state.badges = shelf.badges;
+    state.tasks = taskData.missionTasks;
 
     // Follow the server onto a new mission, same as the dashboard.
     const newest = lookup.missions?.[0]?.id || null;

@@ -62,6 +62,19 @@ func MissionForEvent(eventType string, missionTime float64) *uint {
 	return tracker.current
 }
 
+// CurrentMissionID reports the mission events are currently being tagged
+// with, nil when nothing has arrived yet.
+func CurrentMissionID() *uint {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+
+	if !tracker.resumed {
+		tracker.resume()
+	}
+
+	return tracker.current
+}
+
 // resume adopts the newest mission already in the database, so an overlord
 // restart mid-mission continues the run rather than splitting it. Called under
 // the lock.

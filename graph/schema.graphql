@@ -339,6 +339,22 @@ type Badge {
     detail: String!
 }
 
+"""
+One task or score line exported by the running mission's own scripting, via
+the OVERLORD_EXPORT contract. Snapshots upserted by (mission, key), so the
+newest poll simply wins.
+"""
+type MissionTask {
+    taskKey: String!
+    title: String!
+    "The mission's own word: active, done, failed. Displayed, never acted on."
+    state: String!
+    "Who it belongs to, empty for a mission-wide entry. Matched by name."
+    playerName: String!
+    points: Int!
+    updatedAt: Time!
+}
+
 "One graded landing. The grade is free text as DCS reported it."
 type LandingGrade {
     playerName: String
@@ -439,6 +455,8 @@ type Query {
     weaponEffectiveness(missionID: ID): [WeaponEffectiveness!]!
     "Sorties per player and how they ended."
     playerActivity(missionID: ID): [PlayerActivity!]!
+    "Tasks and scores exported by the running mission, newest poll wins. Omit missionID for all missions."
+    missionTasks(missionID: ID): [MissionTask!]!
     "Career badge shelf for one player. Never mission-scoped: a badge is something you keep."
     badges(playerID: ID!): [Badge!]!
     "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."

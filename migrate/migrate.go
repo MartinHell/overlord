@@ -28,6 +28,7 @@ func main() {
 		&models.Target{},
 		&models.Event{},
 		&models.Mission{},
+		&models.MissionTask{},
 	); err != nil {
 		logs.Sugar.Fatalf("Migration failed: %v", err)
 	}
