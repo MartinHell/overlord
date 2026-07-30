@@ -64,6 +64,12 @@ models:
   PlayerAircraftStats:
     model:
       - github.com/MartinHell/overlord/models.PlayerAircraftStats
+  Favourite:
+    model:
+      - github.com/MartinHell/overlord/models.Favourite
+  Favourites:
+    model:
+      - github.com/MartinHell/overlord/models.Favourites
   Matchup:
     model:
       - github.com/MartinHell/overlord/models.Matchup

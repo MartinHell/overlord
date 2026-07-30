@@ -103,6 +103,41 @@ type PlayerProfileView struct {
 	// absent entirely when it reported neither -- which is roughly half of
 	// kills, a caveat the map has to state rather than hide.
 	KillPoints []*KillPoint
+
+	Favourites *Favourites
+}
+
+// Favourite is one superlative: a name, how often it earned the title, and a
+// player id when the name is a pilot the client can link to.
+type Favourite struct {
+	ID    *uint
+	Name  string
+	Count int
+}
+
+// Favourites are the dossier lines on a pilot page -- one standout answer per
+// question, each a maximum over an aggregate the profile already carries or a
+// dedicated query. Every field is nil when there is nothing to crown, which the
+// client renders by leaving that line out rather than inventing a zero.
+type Favourites struct {
+	// Aircraft is the most-flown airframe, by sorties.
+	Aircraft *Favourite
+	// Weapon is the weapon with the most kills. Nil until something dies to it;
+	// the client can fall back to most-fired from the weapons table.
+	Weapon *Favourite
+	// Prey is the type this player has destroyed most.
+	Prey *Favourite
+	// NemesisUnit is the type that has shot this player down most.
+	NemesisUnit *Favourite
+	// NemesisPilot is the pilot credited with the most of this player's deaths.
+	// The flattened AI players count like anyone else, so this is often an AI.
+	NemesisPilot *Favourite
+	// DeadliestWeapon is the weapon this player has died to most.
+	DeadliestWeapon *Favourite
+	// Theatre is the map this player has the most kills on. Only interesting
+	// across missions; under a single-mission scope it is trivially that
+	// mission's map, which the client hides.
+	Theatre *Favourite
 }
 
 // MapKillPoint is one kill with a place and a side, for the mission map that
