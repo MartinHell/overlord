@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Declared before any CSS arrives so the browser paints the canvas in a
+     sane colour from the first frame. app.js narrows it to the chosen theme. -->
+<meta name="color-scheme" content="light dark">
 <title>Overlord — debrief</title>
 <link rel="stylesheet" href="app.css">
 <!-- Leaflet, pinned and integrity-checked; see player.html for the reasoning. -->
@@ -160,7 +163,7 @@
      A native <dialog> opened with showModal(): the focus trap, Escape to
      close, the inert background and the backdrop all come with it. The
      hand-rolled version of this left every control behind it tabbable. -->
-<dialog id="card" class="card" aria-labelledby="card-name">
+<dialog id="card" class="card" closedby="any" aria-labelledby="card-name">
   <div class="card-head">
     <div>
       <h3 id="card-name">—</h3>
