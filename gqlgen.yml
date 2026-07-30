@@ -43,6 +43,69 @@ models:
   CoalitionKills:
     model:
       - github.com/MartinHell/overlord/models.CoalitionKills
+  Specs:
+    model:
+      - github.com/MartinHell/overlord/models.Specs
+  UnitProfile:
+    model:
+      - github.com/MartinHell/overlord/models.UnitProfileView
+  WeaponProfile:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponProfileView
+  WeaponEffectiveness:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponEffectiveness
+  PlayerActivity:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerActivity
+  PlayerProfile:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerProfileView
+  PlayerAircraftStats:
+    model:
+      - github.com/MartinHell/overlord/models.PlayerAircraftStats
+  Matchup:
+    model:
+      - github.com/MartinHell/overlord/models.Matchup
+  MissionTask:
+    model:
+      - github.com/MartinHell/overlord/models.MissionTask
+  Badge:
+    model:
+      - github.com/MartinHell/overlord/models.Badge
+  BadgeAward:
+    model:
+      - github.com/MartinHell/overlord/models.BadgeAward
+  Mission:
+    model:
+      - github.com/MartinHell/overlord/models.MissionSummary
+  Records:
+    model:
+      - github.com/MartinHell/overlord/models.Records
+  KillRecord:
+    model:
+      - github.com/MartinHell/overlord/models.KillRecord
+  WeaponRecord:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponRecord
+  Collateral:
+    model:
+      - github.com/MartinHell/overlord/models.Collateral
+  SceneryCount:
+    model:
+      - github.com/MartinHell/overlord/models.SceneryCount
+  MapKillPoint:
+    model:
+      - github.com/MartinHell/overlord/models.MapKillPoint
+  KillPoint:
+    model:
+      - github.com/MartinHell/overlord/models.KillPoint
+  TimelineBucket:
+    model:
+      - github.com/MartinHell/overlord/models.TimelineBucket
+  LandingGrade:
+    model:
+      - github.com/MartinHell/overlord/models.LandingGrade
   UnitWeaponBreakdown:
     model:
       - github.com/MartinHell/overlord/models.UnitWeaponBreakdown

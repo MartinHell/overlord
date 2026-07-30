@@ -4,8 +4,12 @@ import (
 	"context"
 	"os"
 
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/custom"
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/hook"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/mission"
 	"github.com/DCS-gRPC/go-bindings/dcs/v0/net"
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/timer"
+	"github.com/DCS-gRPC/go-bindings/dcs/v0/world"
 	"github.com/MartinHell/overlord/logs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -14,6 +18,22 @@ import (
 var NetServiceClient net.NetServiceClient
 
 var MissionServiceClient mission.MissionServiceClient
+
+// CustomServiceClient reaches the mission scripting environment, used to poll
+// the OVERLORD_EXPORT score table. Its Eval method only works when the DCS
+// side sets evalEnabled = true.
+var CustomServiceClient custom.CustomServiceClient
+
+// HookServiceClient and WorldServiceClient identify the running mission: its
+// name from the hook environment, its theatre from the mission world. Neither
+// needs the eval switch.
+var HookServiceClient hook.HookServiceClient
+
+var WorldServiceClient world.WorldServiceClient
+
+// TimerServiceClient reads the mission clock directly, so pollers can detect a
+// mission restart without waiting for an event to arrive.
+var TimerServiceClient timer.TimerServiceClient
 
 var GrpcClientConn *grpc.ClientConn
 
@@ -47,6 +67,10 @@ func InitGrpc() error {
 
 	MissionServiceClient = mission.NewMissionServiceClient(GrpcClientConn)
 	NetServiceClient = net.NewNetServiceClient(GrpcClientConn)
+	CustomServiceClient = custom.NewCustomServiceClient(GrpcClientConn)
+	HookServiceClient = hook.NewHookServiceClient(GrpcClientConn)
+	WorldServiceClient = world.NewWorldServiceClient(GrpcClientConn)
+	TimerServiceClient = timer.NewTimerServiceClient(GrpcClientConn)
 
 	logs.Sugar.Infof("gRPC client configured for %s", addr)
 

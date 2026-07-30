@@ -19,6 +19,10 @@ type Event struct {
 	PlayerID *uint
 	Player   Player `gorm:"foreignKey:PlayerID;references:PlayerID"`
 	Event    string
+	// MissionID ties the event to one run of a mission, so aggregates can be
+	// scoped to "this mission" instead of all of recorded history. Nullable
+	// because rows predate the missions table until the backfill has run.
+	MissionID *uint `gorm:"index"`
 	// MissionTime is the DCS mission clock in seconds, as reported by the event
 	// stream. CreatedAt records when overlord wrote the row, which drifts from
 	// the sim and does not survive a restart mid-mission; this is the timestamp
@@ -137,6 +141,7 @@ func (e *Event) CreateEvent() error {
 		event := Event{
 			PlayerID:          e.PlayerID,
 			Event:             e.Event,
+			MissionID:         e.MissionID,
 			MissionTime:       e.MissionTime,
 			Coalition:         e.Coalition,
 			InitiatorKind:     e.InitiatorKind,

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlord — debrief</title>
+<link rel="stylesheet" href="app.css">
+<!-- Leaflet, pinned and integrity-checked; see player.html for the reasoning. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+<script>
+  // Resolve the theme before first paint. app.css has no prefers-color-scheme
+  // block: it styles data-theme only, so this attribute has to exist by the
+  // time the stylesheet applies or the page flashes the wrong theme.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("overlord-theme"); } catch (e) { /* private mode */ }
+    var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  })();
+</script>
+</head>
+<body data-page="dashboard">
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <b>Overlord</b>
+      <span>Debrief</span>
+    </div>
+
+    <dl class="stats">
+      <div><dt>Mission time</dt><dd id="ro-clock">--:--:--</dd></div>
+      <div><dt>Events</dt><dd id="ro-events">0</dd></div>
+      <div><dt>Sorties</dt><dd id="ro-sorties">0</dd></div>
+      <div><dt>Kills</dt><dd id="ro-kills">0</dd></div>
+    </dl>
+
+    <div class="controls">
+      <div class="chips" id="scope" role="group" aria-label="Time range">
+        <button type="button" data-scope="mission" class="on">This mission</button>
+        <button type="button" data-scope="all">All time</button>
+      </div>
+      <label class="vh" for="q">Filter everything</label>
+      <input type="search" id="q" placeholder="Search pilots, aircraft, weapons…" autocomplete="off">
+      <button id="theme" type="button">Theme</button>
+      <label class="toggle"><input type="checkbox" id="live" checked> Live</label>
+      <span id="link" class="status" role="status">Connecting</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- The scoreboard. Mission identity, the score as a tug of war, and the
+       latest kills -- composed like a match report, because that is what a
+       debrief page is opened to see. -->
+  <section class="card-panel hero" id="p-hero">
+    <div class="hero-head">
+      <div>
+        <h1 id="hero-title">—</h1>
+        <p id="hero-sub" class="hero-sub"></p>
+      </div>
+      <dl class="hero-clock">
+        <dt>Mission time</dt>
+        <dd id="hero-clock">--:--:--</dd>
+      </dl>
+    </div>
+
+    <div class="tug" role="img" aria-label="Kills, blue against red">
+      <span class="tug-num tug-blue" id="tug-blue">0</span>
+      <div class="tug-bar"><i id="tug-blue-bar"></i><i id="tug-red-bar"></i></div>
+      <span class="tug-num tug-red" id="tug-red">0</span>
+    </div>
+    <p class="chart-scale" id="tug-note"></p>
+
+    <ol id="killfeed" class="killfeed"></ol>
+  </section>
+
+  <section class="card-panel" id="p-records">
+    <div class="phead"><h2>Records</h2></div>
+    <div id="records"></div>
+  </section>
+
+  <section class="card-panel" id="p-missionmap">
+    <div class="phead"><h2>The map</h2></div>
+    <p class="note">
+      Every geolocated kill in scope, both sides. Roughly half of kills carry no position and cannot be shown.
+    </p>
+    <div id="missionmap"></div>
+  </section>
+
+  <section class="card-panel" id="p-weapons">
+    <div class="phead">
+      <h2>Weapons</h2>
+      <div class="chips" id="weapon-class" role="group" aria-label="Filter by weapon type">
+        <button type="button" data-class="all" class="on">All</button>
+        <button type="button" data-class="ordnance">Missiles &amp; bombs</button>
+        <button type="button" data-class="gun">Guns</button>
+        <button type="button" data-class="collision">Collisions</button>
+      </div>
+    </div>
+    <p class="note">
+      Hits per shot is a ratio and can exceed 1 legitimately — DCS reports one shot per launch but one hit per
+      object damaged, so cluster and splash weapons register several. Guns report hits and no shots, so they
+      have no ratio. Rows named after an aircraft are collisions, where DCS names the aircraft as the weapon.
+    </p>
+    <div class="tw"><table id="weapons" class="grid"></table></div>
+  </section>
+
+  <div class="split">
+    <section class="card-panel" id="p-pilots">
+      <div class="phead"><h2>Leaderboard</h2></div>
+      <div class="tw"><table id="pilots" class="grid"></table></div>
+    </section>
+
+    <section class="card-panel" id="p-traps">
+      <div class="phead"><h2>Landings</h2></div>
+      <p class="note">Graded by DCS. Carrier traps include the wire and deviations.</p>
+      <div class="tw"><table id="traps" class="grid"></table></div>
+    </section>
+  </div>
+
+  <section class="card-panel" id="p-tasks" hidden>
+    <div class="phead"><h2>Mission tasks</h2></div>
+    <p class="note">Set and scored by the mission itself, straight from its own scripting.</p>
+    <div class="tw"><table id="tasks" class="grid"></table></div>
+  </section>
+
+  <section class="card-panel" id="p-collateral">
+    <div class="phead"><h2>Collateral damage</h2></div>
+    <div id="collateral"></div>
+  </section>
+
+  <section class="card-panel" id="p-log">
+    <div class="phead">
+      <h2>Events</h2>
+      <div class="chips" id="log-filter" role="group" aria-label="Filter the event log">
+        <button type="button" data-ev="all" class="on">All</button>
+        <button type="button" data-ev="kill">Kills</button>
+        <button type="button" data-ev="hit">Hits</button>
+        <button type="button" data-ev="shot">Shots</button>
+        <button type="button" data-ev="losses">Losses</button>
+        <button type="button" data-ev="sortie">Sorties</button>
+      </div>
+      <div class="chips" id="log-side" role="group" aria-label="Filter by coalition">
+        <button type="button" data-side="all" class="on">Both sides</button>
+        <button type="button" data-side="blue" class="side-blue">Blue</button>
+        <button type="button" data-side="red" class="side-red">Red</button>
+      </div>
+    </div>
+    <div class="tw tw-tall"><table id="log" class="grid"></table></div>
+  </section>
+
+</main>
+
+<!-- Reference card. Opened by clicking any aircraft or weapon name.
+     A native <dialog> opened with showModal(): the focus trap, Escape to
+     close, the inert background and the backdrop all come with it. The
+     hand-rolled version of this left every control behind it tabbable. -->
+<dialog id="card" class="card" aria-labelledby="card-name">
+  <div class="card-head">
+    <div>
+      <h3 id="card-name">—</h3>
+      <p id="card-sub" class="card-sub"></p>
+    </div>
+    <button id="card-close" type="button">Close</button>
+  </div>
+  <div id="card-body"></div>
+</dialog>
+
+<footer id="foot"></footer>
+
+<script src="app.js"></script>
+</body>
+</html>

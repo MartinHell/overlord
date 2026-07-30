@@ -100,7 +100,7 @@ func TestTeamkillAggregateAvoidsFilter(t *testing.T) {
 		const expr = `CASE WHEN events.coalition IS NULL OR events.coalition = '' THEN 'unknown' ELSE events.coalition END`
 
 		stmt := db.Model(&models.Event{}).
-			Select(expr + ` AS coalition, COUNT(*) AS kills,
+			Select(expr+` AS coalition, COUNT(*) AS kills,
 				SUM(CASE WHEN events.coalition <> '' AND events.coalition <> 'unknown'
 					AND events.target_coalition = events.coalition THEN 1 ELSE 0 END) AS teamkills`).
 			Where("events.event = ?", "kill").

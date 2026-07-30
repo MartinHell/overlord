@@ -29,6 +29,7 @@ func main() {
 
 	go routers.GraphQLHandler()
 	go controllers.StreamEvents(ctx)
+	go controllers.PollMissionExport(ctx)
 
 	logs.Sugar.Infoln("Server started")
 

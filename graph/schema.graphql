@@ -39,6 +39,365 @@ type Event {
     updatedAt: Time!
 }
 
+"""
+Physical facts from Wikidata, which is CC0. Every field is optional: coverage is
+uneven and an absent value means Wikidata holds nothing rather than zero.
+"""
+type Specs {
+    "Wikidata entity, so any value can be traced to its source."
+    qid: String!
+    lengthM: Float
+    "Wingspan as Wikidata records it. For swing-wing types this is usually unswept."
+    wingspanM: Float
+    heightM: Float
+    massKg: Float
+    firstFlight: String
+    serviceEntry: String
+    totalProduced: Int
+    makers: [String!]
+}
+
+"""
+Reference card for an airframe or vehicle: identity plus everything recorded
+about it. Identity is curated, and carries no performance figures on purpose --
+they would have to be sourced rather than recalled.
+"""
+type UnitProfile {
+    type: String!
+    "False when the identity below was derived from the DCS identifier rather than curated."
+    curated: Boolean!
+    name: String!
+    nickname: String
+    role: String
+    origin: String
+    maker: String
+    blurb: String
+    "Canonical article to read further. Null when none is recorded."
+    source: String
+    specs: Specs
+
+    sorties: Int!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    losses: Int!
+    ejections: Int!
+    "How often this type was itself destroyed."
+    timesKilled: Int!
+    "What it fires, busiest first."
+    stores: [WeaponShotBreakdown!]!
+}
+
+"Reference card for a store, with what carried it and how it performed."
+type WeaponProfile {
+    type: String!
+    curated: Boolean!
+    name: String!
+    nickname: String
+    role: String
+    origin: String
+    maker: String
+    blurb: String
+    source: String
+    specs: Specs
+
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    hitsPerShot: Float!
+    killsPerShot: Float!
+    "Airframes and vehicles seen firing it, busiest first."
+    carriers: [UnitShotBreakdown!]!
+}
+
+"Shots against hits against kills for one weapon type."
+type WeaponEffectiveness {
+    weaponType: String!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    """
+    Hits divided by shots. A ratio, not a percentage: it exceeds 1 for
+    submunition and splash weapons, because DCS emits one shot event per launch
+    but one hit event per object damaged. Hits on scenery are excluded. Zero when
+    the weapon has no shot events, as with guns.
+    """
+    hitsPerShot: Float!
+    "Kills divided by shots. Also a ratio that can exceed 1, since one weapon can destroy several units."
+    killsPerShot: Float!
+}
+
+"How many sorties a player started, and how they ended."
+type PlayerActivity {
+    playerID: ID!
+    playerName: String!
+    "Excludes scenery, like every other kill figure."
+    kills: Int!
+    takeoffs: Int!
+    landings: Int!
+    crashes: Int!
+    ejections: Int!
+    deaths: Int!
+}
+
+"""
+Everything recorded about one player.
+
+The synthetic per-coalition AI players are ordinary players here, so asking for
+the blue AI returns that whole side's record in the same shape as a person's and
+the two can be compared directly.
+"""
+type PlayerProfile {
+    playerID: ID!
+    playerName: String!
+    "True for the synthetic AI players rather than a human."
+    isAI: Boolean!
+    "The airframe this record is narrowed to. Null for the pilot's whole record."
+    unitType: String
+    "Every airframe this pilot has flown, whatever the current narrowing."
+    flown: [String!]!
+    "Sides this player has been seen on, busiest first. A human can switch between sorties."
+    coalitions: [String!]!
+
+    sorties: Int!
+    landings: Int!
+    crashes: Int!
+    ejections: Int!
+    deaths: Int!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    "Kills where the target was on the same side."
+    teamkills: Int!
+    "How often something of this player's was destroyed by someone else."
+    timesKilled: Int!
+    "Kills divided by deaths, counting a death as a pilot death or a crash. Equals kills when there are no deaths."
+    killDeathRatio: Float!
+    "Earliest and latest mission clock this player appears at."
+    firstSeen: Float!
+    lastSeen: Float!
+
+    "Record per airframe, most flown first."
+    aircraft: [PlayerAircraftStats!]!
+    "Record per weapon, most fired first."
+    weapons: [WeaponEffectiveness!]!
+    "What this player killed, by the airframe they were flying."
+    matchups: [Matchup!]!
+    "What killed this player. unitType is what they were flying, targetType is what killed them."
+    killedBy: [Matchup!]!
+    landingGrades: [LandingGrade!]!
+
+    "How wide each timeline bucket is, sized from the mission span."
+    bucketSeconds: Int!
+    "Activity across the mission clock."
+    timeline: [TimelineBucket!]!
+
+    "Where the kills happened. Roughly half of kills carry no position and are absent here."
+    killPoints: [KillPoint!]!
+}
+
+"One kill with a place and a side, for the mission map."
+type MapKillPoint {
+    lat: Float!
+    lon: Float!
+    coalition: String!
+    playerName: String!
+    unitType: String
+    targetType: String
+    weaponType: String
+    missionTime: Float!
+}
+
+"One kill with a place: the victim's position where reported, the shooter's otherwise."
+type KillPoint {
+    lat: Float!
+    lon: Float!
+    targetType: String
+    weaponType: String
+    missionTime: Float!
+}
+
+"One slice of the mission clock."
+type TimelineBucket {
+    "Mission time at the start of the bucket, in seconds."
+    t: Float!
+    sorties: Int!
+    kills: Int!
+    losses: Int!
+    shots: Int!
+}
+
+"One player's record in one airframe."
+type PlayerAircraftStats {
+    unitType: String!
+    sorties: Int!
+    landings: Int!
+    shots: Int!
+    hits: Int!
+    kills: Int!
+    losses: Int!
+    ejections: Int!
+    "A ratio rather than a percentage, for the same reason as WeaponEffectiveness.hitsPerShot."
+    hitsPerShot: Float!
+    killsPerShot: Float!
+}
+
+"A kill tally for one airframe against one other type."
+type Matchup {
+    "The airframe that did the killing."
+    unitType: String!
+    "The type that was killed."
+    targetType: String!
+    kills: Int!
+}
+
+"""
+One recorded run of a mission. Start, size and duration are derived from the
+events, so backfilled missions report them exactly like live ones.
+"""
+type Mission {
+    id: ID!
+    "As DCS reports it. Empty for runs recorded before capture existed."
+    name: String!
+    "The map: Caucasus, Syria, and so on. Empty when unknown."
+    theatre: String!
+    startedAt: Time!
+    events: Int!
+    "Highest mission clock seen, in seconds."
+    duration: Float!
+}
+
+"""
+The standout moments of a mission.
+
+Everything else here is an aggregate, which says how a mission went but never
+what happened in it. These are single events, named and timed.
+"""
+type Records {
+    "The first real kill of the mission. Scenery does not count."
+    firstBlood: KillRecord
+    "The kill with the greatest separation between shooter and target."
+    longestKill: KillRecord
+    "The kill made from the greatest altitude."
+    highestKill: KillRecord
+    "The weapon that converted shots into kills best, over at least ten shots."
+    deadliest: WeaponRecord
+}
+
+"One kill, with enough around it to tell the story."
+type KillRecord {
+    playerID: ID!
+    playerName: String!
+    unitType: String
+    weaponType: String
+    targetType: String
+    missionTime: Float!
+    """
+    How far apart shooter and target were when the target died, in metres. Not
+    the launch range, which DCS does not make recoverable: a shot event carries
+    no target, and a long-flying missile leaves the shooter somewhere else by
+    the time it arrives.
+    """
+    rangeM: Float!
+    "The shooter's altitude at the moment of the kill, in metres."
+    altitudeM: Float!
+}
+
+"The most efficient weapon, over a minimum sample."
+type WeaponRecord {
+    weaponType: String!
+    shots: Int!
+    kills: Int!
+    killsPerShot: Float!
+}
+
+"""
+What got caught in the blast: map scenery, counted apart from anything that
+shoots back. Excluded from every hit and kill figure on purpose -- a bomb
+catching a wood is not marksmanship -- but far too good to throw away.
+"""
+type Collateral {
+    "Scenery objects hit. DCS emits a hit when a blast touches one."
+    struck: Int!
+    "Scenery objects actually destroyed, which is a much smaller number than struck."
+    levelled: Int!
+    "Trees and structures split struck. The grouping is read off the DCS identifier, so it is a guess."
+    trees: Int!
+    structures: Int!
+    "The busiest kinds, at most ten."
+    top: [SceneryCount!]!
+}
+
+"One kind of scenery and how often it was hit."
+type SceneryCount {
+    type: String!
+    "Readable form of the DCS identifier."
+    displayName: String!
+    count: Int!
+    "Whether this was grouped as a plant."
+    tree: Boolean!
+}
+
+"""
+One achievement on a pilot's shelf. Computed from the events on every read
+rather than stored, so the shelf always agrees with the data, and a locked
+badge can honestly report its progress.
+"""
+type Badge {
+    id: String!
+    name: String!
+    emoji: String!
+    "How it is earned, phrased for the locked state."
+    description: String!
+    earned: Boolean!
+    "How many times it has been earned. Career thresholds are 1; repeatable badges count every earning."
+    count: Int!
+    "Progress towards target, for rendering the locked state."
+    progress: Int!
+    target: Int!
+    "The earned story, e.g. how many kills in which mission."
+    detail: String!
+    "Individual earnings, newest first, capped at twelve. count carries the true number."
+    awards: [BadgeAward!]!
+}
+
+"One earning of a badge: which mission, on what map, when, and what happened."
+type BadgeAward {
+    missionID: ID!
+    "Empty when the mission predates name capture."
+    missionName: String!
+    theatre: String!
+    when: Time!
+    detail: String!
+}
+
+"""
+One task or score line exported by the running mission's own scripting, via
+the OVERLORD_EXPORT contract. Snapshots upserted by (mission, key), so the
+newest poll simply wins.
+"""
+type MissionTask {
+    taskKey: String!
+    title: String!
+    "The mission's own word: active, done, failed. Displayed, never acted on."
+    state: String!
+    "Who it belongs to as the mission spelled it, empty for a mission-wide entry."
+    playerName: String!
+    "The stable player behind that name, resolved at ingest. Null when the name matched nobody."
+    playerID: ID
+    points: Int!
+    updatedAt: Time!
+}
+
+"One graded landing. The grade is free text as DCS reported it."
+type LandingGrade {
+    playerName: String
+    unitType: String
+    place: String
+    grade: String
+    missionTime: Float!
+}
+
 type CoalitionKills {
     coalition: String!
     kills: Int!
@@ -56,6 +415,8 @@ type Player {
 
 type Unit {
     unitID: ID!
+    "Readable name for the DCS type, curated where known and derived otherwise."
+    displayName: String!
     createdAt: Time!
     updatedAt: Time!
     deletedAt: Time
@@ -64,6 +425,8 @@ type Unit {
 
 type Weapon {
     weaponID: ID!
+    "Readable name for the DCS type, curated where known and derived otherwise."
+    displayName: String!
     createdAt: Time!
     updatedAt: Time!
     deletedAt: Time
@@ -117,9 +480,33 @@ type WeaponShotBreakdown {
 
 type Query {
     "Omit coalition to get both sides at once; pass red or blue to narrow."
-    events(first: Int, after: String, eventType: String, coalition: String): EventConnection
-    "Kill tally per coalition, covering both sides."
-    killsByCoalition: [CoalitionKills!]!
+    events(first: Int, after: String, eventType: String, coalition: String, missionID: ID): EventConnection
+    "Recorded missions, newest first."
+    missions: [Mission!]!
+    "Kill tally per coalition, covering both sides. Omit missionID for all of recorded history."
+    killsByCoalition(missionID: ID): [CoalitionKills!]!
+    "Shots, hits, kills, accuracy and Pk per weapon type."
+    weaponEffectiveness(missionID: ID): [WeaponEffectiveness!]!
+    "Sorties per player and how they ended."
+    playerActivity(missionID: ID): [PlayerActivity!]!
+    "Tasks and scores exported by the running mission, newest poll wins. Omit missionID for all missions."
+    missionTasks(missionID: ID): [MissionTask!]!
+    "Career badge shelf for one player. Never mission-scoped: a badge is something you keep."
+    badges(playerID: ID!): [Badge!]!
+    "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."
+    playerProfile(playerID: ID!, unitType: String, missionID: ID): PlayerProfile
+    "Standout moments: first blood, longest and highest kills, most efficient weapon."
+    records(missionID: ID): Records
+    "Every geolocated kill in scope, both sides, for the mission map."
+    killPoints(missionID: ID): [MapKillPoint!]!
+    "Scenery caught in the blast. Omit playerID for the whole mission, including the majority DCS reports with no initiator."
+    collateral(playerID: ID, missionID: ID): Collateral
+    "Recent graded landings, newest first."
+    landingGrades(first: Int, missionID: ID): [LandingGrade!]!
+    "Reference card and recorded stats for one airframe or vehicle type."
+    unitProfile(type: String!): UnitProfile
+    "Reference card and recorded stats for one store."
+    weaponProfile(type: String!): WeaponProfile
     event(id: ID!): Event
     players: [Player]
     player(id: ID!): Player

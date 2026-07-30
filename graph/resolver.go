@@ -15,9 +15,33 @@ import (
 
 type Resolver struct{}
 
+// MissionID is the resolver for the missionID field.
+func (r *badgeAwardResolver) MissionID(ctx context.Context, obj *models.BadgeAward) (string, error) {
+	return fmt.Sprintf("%v", obj.MissionID), nil
+}
+
 // ID is the resolver for the id field.
 func (r *eventResolver) ID(ctx context.Context, obj *models.Event) (string, error) {
 	return fmt.Sprintf("%v", obj.ID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
+func (r *killRecordResolver) PlayerID(ctx context.Context, obj *models.KillRecord) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
+// ID is the resolver for the id field.
+func (r *missionResolver) ID(ctx context.Context, obj *models.MissionSummary) (string, error) {
+	return fmt.Sprintf("%v", obj.MissionID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
+func (r *missionTaskResolver) PlayerID(ctx context.Context, obj *models.MissionTask) (*string, error) {
+	if obj.PlayerID == nil {
+		return nil, nil
+	}
+	s := fmt.Sprintf("%v", *obj.PlayerID)
+	return &s, nil
 }
 
 // PlayerID is the resolver for the playerID field.
@@ -34,12 +58,22 @@ func (r *playerResolver) DeletedAt(ctx context.Context, obj *models.Player) (*ti
 }
 
 // PlayerID is the resolver for the playerID field.
+func (r *playerActivityResolver) PlayerID(ctx context.Context, obj *models.PlayerActivity) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
+func (r *playerProfileResolver) PlayerID(ctx context.Context, obj *models.PlayerProfileView) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
 func (r *playerShotBreakdownResolver) PlayerID(ctx context.Context, obj *models.PlayerShotBreakdown) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
 
 // Events is the resolver for the events field.
-func (r *queryResolver) Events(ctx context.Context, first *int, after *string, eventType *string, coalition *string) (*models.EventConnection, error) {
+func (r *queryResolver) Events(ctx context.Context, first *int, after *string, eventType *string, coalition *string, missionID *string) (*models.EventConnection, error) {
 	filterType := ""
 	if eventType != nil {
 		filterType = *eventType
@@ -60,7 +94,7 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		cursor = *after
 	}
 
-	page, err := controllers.GetEventsPage(filterType, filterCoalition, pageSize, cursor)
+	page, err := controllers.GetEventsPage(filterType, filterCoalition, pageSize, cursor, parseOptionalID(missionID))
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +118,104 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 	}, nil
 }
 
+// Missions is the resolver for the missions field.
+func (r *queryResolver) Missions(ctx context.Context) ([]*models.MissionSummary, error) {
+	return controllers.GetMissions()
+}
+
 // KillsByCoalition returns the kill tally for every coalition at once.
-func (r *queryResolver) KillsByCoalition(ctx context.Context) ([]*models.CoalitionKills, error) {
-	return controllers.GetKillsByCoalition()
+func (r *queryResolver) KillsByCoalition(ctx context.Context, missionID *string) ([]*models.CoalitionKills, error) {
+	return controllers.GetKillsByCoalition(parseOptionalID(missionID))
+}
+
+// WeaponEffectiveness is the resolver for the weaponEffectiveness field.
+func (r *queryResolver) WeaponEffectiveness(ctx context.Context, missionID *string) ([]*models.WeaponEffectiveness, error) {
+	return controllers.GetWeaponEffectiveness(parseOptionalID(missionID))
+}
+
+// PlayerActivity is the resolver for the playerActivity field.
+func (r *queryResolver) PlayerActivity(ctx context.Context, missionID *string) ([]*models.PlayerActivity, error) {
+	return controllers.GetPlayerActivity(parseOptionalID(missionID))
+}
+
+// MissionTasks is the resolver for the missionTasks field.
+func (r *queryResolver) MissionTasks(ctx context.Context, missionID *string) ([]*models.MissionTask, error) {
+	return controllers.GetMissionTasks(parseOptionalID(missionID))
+}
+
+// Badges is the resolver for the badges field.
+func (r *queryResolver) Badges(ctx context.Context, playerID string) ([]*models.Badge, error) {
+	id := parseOptionalID(&playerID)
+	if id == nil {
+		return nil, nil
+	}
+
+	return controllers.GetBadges(*id)
+}
+
+// PlayerProfile is the resolver for the playerProfile field.
+func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unitType *string, missionID *string) (*models.PlayerProfileView, error) {
+	// The argument name has to match the schema, since gqlgen regenerates this
+	// signature; keep the parsed value under a different name.
+	parsed, err := strconv.ParseUint(playerID, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+
+	narrow := ""
+	if unitType != nil {
+		narrow = *unitType
+	}
+
+	return controllers.GetPlayerProfile(uint(parsed), narrow, parseOptionalID(missionID))
+}
+
+// Records is the resolver for the records field.
+func (r *queryResolver) Records(ctx context.Context, missionID *string) (*models.Records, error) {
+	return controllers.GetRecords(parseOptionalID(missionID))
+}
+
+// KillPoints is the resolver for the killPoints field.
+func (r *queryResolver) KillPoints(ctx context.Context, missionID *string) ([]*models.MapKillPoint, error) {
+	return controllers.GetKillPoints(parseOptionalID(missionID))
+}
+
+// Collateral is the resolver for the collateral field.
+func (r *queryResolver) Collateral(ctx context.Context, playerID *string, missionID *string) (*models.Collateral, error) {
+	// No player means the whole mission, which is the interesting number: DCS
+	// reports most scenery damage with no initiator at all, so the sum across
+	// every pilot is far short of the total.
+	var id *uint
+	if playerID != nil && *playerID != "" {
+		parsed, err := strconv.ParseUint(*playerID, 10, 64)
+		if err != nil {
+			return nil, nil
+		}
+		v := uint(parsed)
+		id = &v
+	}
+
+	return controllers.GetCollateral(id, parseOptionalID(missionID))
+}
+
+// LandingGrades is the resolver for the landingGrades field.
+func (r *queryResolver) LandingGrades(ctx context.Context, first *int, missionID *string) ([]*models.LandingGrade, error) {
+	limit := 0
+	if first != nil {
+		limit = *first
+	}
+
+	return controllers.GetLandingGrades(limit, parseOptionalID(missionID))
+}
+
+// UnitProfile is the resolver for the unitProfile field.
+func (r *queryResolver) UnitProfile(ctx context.Context, typeArg string) (*models.UnitProfileView, error) {
+	return controllers.GetUnitProfile(typeArg)
+}
+
+// WeaponProfile is the resolver for the weaponProfile field.
+func (r *queryResolver) WeaponProfile(ctx context.Context, typeArg string) (*models.WeaponProfileView, error) {
+	return controllers.GetWeaponProfile(typeArg)
 }
 
 // Event is the resolver for the event field.
@@ -152,6 +281,11 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, playerID string) (*mo
 	return controllers.GetShotsByPlayer(id)
 }
 
+// DisplayName is the resolver for the displayName field.
+func (r *sceneryCountResolver) DisplayName(ctx context.Context, obj *models.SceneryCount) (string, error) {
+	return models.SceneryName(obj.Type), nil
+}
+
 // TargetID is the resolver for the targetID field.
 func (r *targetResolver) TargetID(ctx context.Context, obj *models.Target) (string, error) {
 	return fmt.Sprintf("%v", obj.TargetID), nil
@@ -160,6 +294,12 @@ func (r *targetResolver) TargetID(ctx context.Context, obj *models.Target) (stri
 // UnitID is the resolver for the unitID field.
 func (r *unitResolver) UnitID(ctx context.Context, obj *models.Unit) (string, error) {
 	return fmt.Sprintf("%v", obj.UnitID), nil
+}
+
+// DisplayName is the resolver for the displayName field.
+func (r *unitResolver) DisplayName(ctx context.Context, obj *models.Unit) (string, error) {
+	profile, _ := models.UnitProfile(obj.Type)
+	return profile.Name, nil
 }
 
 // DeletedAt is the resolver for the deletedAt field.
@@ -180,6 +320,12 @@ func (r *weaponResolver) WeaponID(ctx context.Context, obj *models.Weapon) (stri
 	return fmt.Sprintf("%v", obj.WeaponID), nil
 }
 
+// DisplayName is the resolver for the displayName field.
+func (r *weaponResolver) DisplayName(ctx context.Context, obj *models.Weapon) (string, error) {
+	profile, _ := models.WeaponProfile(obj.Type)
+	return profile.Name, nil
+}
+
 // DeletedAt is the resolver for the deletedAt field.
 func (r *weaponResolver) DeletedAt(ctx context.Context, obj *models.Weapon) (*time.Time, error) {
 	if obj.DeletedAt.Valid {
@@ -188,11 +334,31 @@ func (r *weaponResolver) DeletedAt(ctx context.Context, obj *models.Weapon) (*ti
 	return nil, nil
 }
 
+// BadgeAward returns generated.BadgeAwardResolver implementation.
+func (r *Resolver) BadgeAward() generated.BadgeAwardResolver { return &badgeAwardResolver{r} }
+
 // Event returns generated.EventResolver implementation.
 func (r *Resolver) Event() generated.EventResolver { return &eventResolver{r} }
 
+// KillRecord returns generated.KillRecordResolver implementation.
+func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecordResolver{r} }
+
+// Mission returns generated.MissionResolver implementation.
+func (r *Resolver) Mission() generated.MissionResolver { return &missionResolver{r} }
+
+// MissionTask returns generated.MissionTaskResolver implementation.
+func (r *Resolver) MissionTask() generated.MissionTaskResolver { return &missionTaskResolver{r} }
+
 // Player returns generated.PlayerResolver implementation.
 func (r *Resolver) Player() generated.PlayerResolver { return &playerResolver{r} }
+
+// PlayerActivity returns generated.PlayerActivityResolver implementation.
+func (r *Resolver) PlayerActivity() generated.PlayerActivityResolver {
+	return &playerActivityResolver{r}
+}
+
+// PlayerProfile returns generated.PlayerProfileResolver implementation.
+func (r *Resolver) PlayerProfile() generated.PlayerProfileResolver { return &playerProfileResolver{r} }
 
 // PlayerShotBreakdown returns generated.PlayerShotBreakdownResolver implementation.
 func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
@@ -201,6 +367,9 @@ func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
 
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
+
+// SceneryCount returns generated.SceneryCountResolver implementation.
+func (r *Resolver) SceneryCount() generated.SceneryCountResolver { return &sceneryCountResolver{r} }
 
 // Target returns generated.TargetResolver implementation.
 func (r *Resolver) Target() generated.TargetResolver { return &targetResolver{r} }
@@ -217,10 +386,17 @@ func (r *Resolver) UnitWeaponBreakdown() generated.UnitWeaponBreakdownResolver {
 func (r *Resolver) Weapon() generated.WeaponResolver { return &weaponResolver{r} }
 
 type (
+	badgeAwardResolver          struct{ *Resolver }
 	eventResolver               struct{ *Resolver }
+	killRecordResolver          struct{ *Resolver }
+	missionResolver             struct{ *Resolver }
+	missionTaskResolver         struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
+	playerActivityResolver      struct{ *Resolver }
+	playerProfileResolver       struct{ *Resolver }
 	playerShotBreakdownResolver struct{ *Resolver }
 	queryResolver               struct{ *Resolver }
+	sceneryCountResolver        struct{ *Resolver }
 	targetResolver              struct{ *Resolver }
 	unitResolver                struct{ *Resolver }
 	unitWeaponBreakdownResolver struct{ *Resolver }

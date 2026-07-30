@@ -1,0 +1,1058 @@
+/* Overlord — debrief dashboard.
+ *
+ * Greyscale interface, coalition colour only. Blue and red mean side and
+ * nothing else on this page, which is what lets them be read at a glance in a
+ * dense table. Everything else -- headings, buttons, badges, bars -- is a tone
+ * of the foreground. Amber appears once, on friendly fire, because it is rare
+ * and worth interrupting for.
+ *
+ * Both themes are written out once and selected by data-theme on <html>. An
+ * inline script in index.html sets that attribute before first paint, so there
+ * is no prefers-color-scheme block here and no flash of the wrong theme.
+ */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --emph: #e7eaef;
+  --line: #e4e7ec;
+  --line-strong: #cbd1d9;
+
+  --text: #14171c;
+  --text-dim: #5b6572;
+  --text-faint: #8d95a1;
+
+  --blue: #2563c9;
+  --red: #c0382e;
+  --neutral: #7a8494;
+  --ok: #2f7d4a;
+  --warn: #96650d;
+
+  --shadow: 0 1px 2px rgb(16 20 26 / 6%), 0 1px 8px rgb(16 20 26 / 4%);
+  --shadow-lift: 0 8px 30px rgb(16 20 26 / 14%);
+  --scrim: rgb(30 34 40 / 32%);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f1116;
+  --surface: #16181e;
+  --surface-2: #1c1f26;
+  --emph: #242832;
+  --line: #262a33;
+  --line-strong: #39404b;
+
+  --text: #e6e9ee;
+  --text-dim: #99a1ae;
+  --text-faint: #69717e;
+
+  --blue: #5c9bf2;
+  --red: #ef6f66;
+  --neutral: #8b93a1;
+  --ok: #56b073;
+  --warn: #d8a542;
+
+  --shadow: none;
+  --shadow-lift: 0 12px 40px rgb(0 0 0 / 55%);
+  --scrim: rgb(6 8 11 / 68%);
+}
+
+:root {
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Held on <html> for one frame while the theme changes.
+ *
+ * A transition whose value comes from a custom property does not re-resolve
+ * when that property is reassigned: the element keeps painting the old colour
+ * indefinitely, not just for the duration. Selected filter buttons stayed in
+ * the previous theme's fill until something else touched them. Switching the
+ * transition to the background-color longhand did not help, so the fix is to
+ * take transitions out of the picture entirely for the one frame that matters
+ * and put them back for hover.
+ */
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition: none !important;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.vh {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ---- header ---- */
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.top-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0.75rem 1.5rem;
+}
+
+.brand { display: flex; align-items: baseline; gap: 0.5rem; }
+.brand b { font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; }
+.brand span { color: var(--text-faint); font-size: 0.8125rem; }
+
+/* Four numbers that are always true, whatever is filtered below. */
+.stats { display: flex; gap: 1.75rem; margin: 0; }
+.stats div { display: flex; flex-direction: column; gap: 0.1rem; }
+.stats dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.stats dd {
+  margin: 0;
+  font: 500 1rem/1.2 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wraps. The row is a search box, a theme button, a live toggle and a status
+   that grows once it says "Updated 19:09:45"; without this it runs off the
+   right edge on a phone and takes the whole page's horizontal scroll with it. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+input[type="search"] {
+  width: 16rem;
+  max-width: 42vw;
+  padding: 0.4rem 0.65rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+input[type="search"]::placeholder { color: var(--text-faint); }
+input[type="search"]:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+button {
+  padding: 0.35rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+button:hover { color: var(--text); background: var(--surface-2); }
+
+/* Selected filter: filled with the foreground, so it reads as chosen without
+   spending a colour on it. */
+button.on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+}
+button.side-blue.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+button.side-red.on { background: var(--red); border-color: var(--red); color: #fff; }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle input { accent-color: var(--text-dim); margin: 0; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.status::before {
+  content: "";
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.status.up::before { background: var(--ok); }
+.status.down::before { background: var(--red); }
+
+/* ---- layout ---- */
+
+main {
+  display: grid;
+  gap: 1rem;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 0;
+}
+
+.split { display: grid; gap: 1rem; }
+@media (min-width: 1000px) {
+  .split { grid-template-columns: 1fr 1fr; }
+}
+
+.card-panel {
+  min-width: 0;
+  padding: 1.1rem 1.25rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.phead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  margin-bottom: 0.9rem;
+}
+.phead h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.chips button { font-size: 0.75rem; padding: 0.25rem 0.6rem; }
+
+.note {
+  margin: 0 0 0.9rem;
+  max-width: 76ch;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* ---- player page ---- */
+
+.brand a { text-decoration: none; }
+.brand a:hover { color: var(--text); }
+
+.link-a {
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link-a:hover { color: var(--text); }
+
+.player-id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+}
+.player-id h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.tags { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.tag {
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.tag-blue { border-color: var(--blue); color: var(--blue); }
+.tag-red { border-color: var(--red); color: var(--red); }
+
+/* The numbers worth seeing without scrolling. */
+.headline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 0.9rem 1.25rem;
+  margin: 1.15rem 0 0;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--line);
+}
+.headline div { display: flex; flex-direction: column; gap: 0.15rem; }
+.headline dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.headline dd {
+  margin: 0;
+  font: 600 1.5rem/1.1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.headline dd small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+/* Names that open a player page, distinguished from reference names only by
+   what they do -- both are quiet until hovered. */
+.pref {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 120ms;
+}
+.pref:hover { border-bottom-color: var(--line-strong); }
+
+/* Airframe filter. Links, not buttons: each one is a page. */
+.filter { margin-top: 0.9rem; }
+
+.chip {
+  padding: 0.25rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+.chip:hover { background: var(--surface-2); color: var(--text); }
+.chip.on { background: var(--text); border-color: var(--text); color: var(--surface); }
+
+.chip-more {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+}
+
+/* Per-row route into the narrowed page. Separate from the type name, which
+   opens the reference card -- one cell doing two different things is a guess. */
+.row-go {
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.row-go:hover { color: var(--text); }
+
+/* ---- charts ---- */
+
+.chart { margin: 0; }
+.chart svg { display: block; width: 100%; height: 130px; }
+
+.tl-axis { stroke: var(--line-strong); stroke-width: 1; }
+.tl-up { fill: var(--text); }
+.tl-down { fill: var(--text-faint); }
+
+.chart figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin-top: 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+.chart figcaption span { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+.key { width: 10px; height: 10px; border-radius: 2px; }
+.key-up { background: var(--text); }
+.key-down { background: var(--text-faint); }
+
+.chart-scale { margin: 0.6rem 0 0; color: var(--text-faint); font-size: 0.75rem; }
+
+/* Matchup grid. The count lives in the cell, so this is the figure and the
+   table at once -- there is no second copy of the numbers to keep in step. */
+table.hm { font-variant-numeric: tabular-nums; }
+table.hm th[scope="row"] {
+  position: static;
+  padding-right: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+table.hm thead th { vertical-align: bottom; }
+.hm-col {
+  display: inline-block;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hm-cell {
+  position: relative;
+  min-width: 2.6rem;
+  padding: 0.4rem 0.35rem;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+/* Shading is a fill layer rather than a mixed colour, so it follows the theme
+   token directly and needs no colour-mix support to work. */
+.hm-fill {
+  position: absolute;
+  inset: 1px;
+  border-radius: 3px;
+  background: var(--text);
+}
+/* Contrast is decided when the cell is built, not left to a blend mode. The
+   fill is the foreground colour at varying opacity, so past roughly half it is
+   closer to the foreground than the surface and the number has to flip. Both
+   tokens swap with the theme, so this holds in light and dark without a second
+   rule. */
+.hm-cell b {
+  position: relative;
+  color: var(--text);
+  font-weight: 500;
+}
+.hm-cell.dense b { color: var(--surface); }
+.hm-cell .zero { color: var(--text-faint); }
+
+/* ---- coalitions ---- */
+
+.standing { display: grid; gap: 0.85rem; }
+
+.side { display: grid; gap: 0.35rem; }
+.side-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.side-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+.side-name::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  background: var(--neutral);
+  transform: translateY(-1px);
+}
+.side[data-side="blue"] .side-name::before { background: var(--blue); }
+.side[data-side="red"] .side-name::before { background: var(--red); }
+
+.side-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.side-num b { font: 600 1.0625rem/1 var(--mono); }
+.side-num i { color: var(--text-dim); font-style: normal; font-size: 0.8125rem; }
+.tk { color: var(--warn); font-size: 0.8125rem; }
+
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.meter span { display: block; height: 100%; border-radius: 3px; background: var(--neutral); }
+.side[data-side="blue"] .meter span { background: var(--blue); }
+.side[data-side="red"] .meter span { background: var(--red); }
+
+/* ---- tables ---- */
+
+.tw { overflow: auto; }
+.tw-tall { max-height: 30rem; }
+
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0 0.9rem 0.45rem 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  user-select: none;
+}
+/* The sort control is a button for keyboard reachability, styled back down to
+   look like the header text it replaced. */
+.grid th button.sort {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.grid th button.sort:hover { color: var(--text); background: none; }
+.grid th[aria-sort] { color: var(--text); }
+.grid th.num button.sort { justify-content: flex-end; width: 100%; }
+.grid th .car { font-size: 0.625rem; opacity: 0.7; }
+
+.grid td {
+  padding: 0.35rem 0.9rem 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.grid tbody tr:last-child td { border-bottom: 0; }
+.grid tbody tr:hover td { background: var(--surface-2); }
+.grid .num { text-align: right; font-family: var(--mono); }
+.grid .zero { color: var(--text-faint); }
+.grid .name { font-weight: 500; }
+
+/* Length bar sits behind the figure it belongs to rather than beside it. */
+.bar {
+  display: inline-block;
+  height: 4px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  vertical-align: 0.15em;
+  margin-right: 0.5rem;
+}
+
+/* Event kind. Greyscale on purpose: red and blue are already spoken for by the
+   coalition dot in the next column. */
+.ev {
+  display: inline-block;
+  min-width: 6.5rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+.ev-kill { background: var(--emph); border-color: var(--line-strong); color: var(--text); font-weight: 600; }
+.ev-hit { color: var(--text); }
+.ev-loss { border-style: dashed; }
+
+.flag {
+  display: inline-block;
+  width: 7px; height: 7px;
+  margin-right: 0.45rem;
+  border-radius: 2px;
+  background: var(--line-strong);
+  vertical-align: 0.05em;
+}
+.flag-blue { background: var(--blue); }
+.flag-red { background: var(--red); }
+
+.grade { font-family: var(--mono); }
+
+.none { padding: 0.6rem 0; color: var(--text-faint); font-size: 0.8125rem; }
+
+/* Names that open a reference card. Underline only on hover, so a table of
+   them does not turn into a wall of blue-ish links. */
+/* Dotted while at rest, solid on hover.
+ *
+ * This was transparent until hover, which looked tidier and meant nothing on
+ * screen suggested that every aircraft and weapon name opens a reference card.
+ * A feature nobody can find is not a quiet feature, it is an absent one, so the
+ * affordance is back -- dotted rather than a link underline, so a table of them
+ * still reads as a table. */
+.ref {
+  cursor: pointer;
+  border-bottom: 1px dotted var(--text-faint);
+  transition: border-color 120ms;
+}
+.ref:hover { border-bottom: 1px solid var(--text); }
+
+/* ---- reference card ---- */
+
+/* A native <dialog>. It is display:none until opened, so the sizing below only
+   ever applies to the open state and no [hidden] rule is needed. */
+dialog.card {
+  width: min(720px, 100% - 2rem);
+  max-width: none;
+  max-height: calc(100dvh - 6rem);
+  margin: 3rem auto;
+  padding: 1.35rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lift);
+}
+/* Literal colours, not var(--scrim). ::backdrop only started inheriting custom
+   properties from its originating element recently and not at the same time in
+   every engine, so a var() here silently resolves to nothing in anything
+   slightly older and the page behind shows through unshaded. */
+dialog.card::backdrop { backdrop-filter: blur(3px); background: rgb(6 8 11 / 68%); }
+:root[data-theme="light"] dialog.card::backdrop { background: rgb(30 34 40 / 32%); }
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.card h3 { margin: 0; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; }
+.card-sub {
+  margin: 0.2rem 0 0;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.card-blurb {
+  margin: 1rem 0 0;
+  max-width: 66ch;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+.card-uncurated {
+  margin: 0.8rem 0 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+.card-uncurated code { font-family: var(--mono); font-size: 0.95em; color: var(--text); }
+
+.card h4 {
+  margin: 1.5rem 0 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.card-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.85rem 1.25rem;
+  margin: 1.1rem 0 0;
+}
+.card-facts div { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.card-facts dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.card-facts dd {
+  margin: 0;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+.card-facts dd.big { font: 600 1.375rem/1.2 var(--mono); }
+
+.card-makers { margin: 0.7rem 0 0; font-size: 0.875rem; }
+.card-prov {
+  margin: 0.6rem 0 0;
+  max-width: 70ch;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.card-more { margin: 1rem 0 0; font-size: 0.875rem; }
+a { color: inherit; }
+.card-more a, .card-prov a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+.card-more a:hover, .card-prov a:hover { text-decoration-color: var(--text); }
+
+footer {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 2.5rem;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .top-in, main, footer { padding-left: 1rem; padding-right: 1rem; }
+  .controls { width: 100%; margin-left: 0; }
+  input[type="search"] { flex: 1; max-width: none; }
+  .stats { gap: 1.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ---- collateral ---- */
+
+.collateral-lede {
+  margin: 0 0 0.9rem;
+  max-width: 70ch;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.collateral-lede b { font-family: var(--mono); font-weight: 600; }
+
+.scenery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scenery li {
+  padding: 0.25rem 0.6rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+.scenery li b {
+  color: var(--text);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+/* Plants get a marker rather than a colour, so the one hue on this page stays
+   coalition and this stays a joke told in greyscale. */
+.scenery li.is-tree::after {
+  content: "🌲";
+  margin-left: 0.35rem;
+  font-size: 0.75em;
+}
+
+/* ---- records ---- */
+
+.records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* Hairline gaps rather than separate cards: four boxes with their own borders
+   read as four things, and these are four facets of one mission. */
+.record {
+  padding: 0.9rem 1rem 1rem;
+  background: var(--surface);
+}
+.record dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.record dd {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  margin: 0.3rem 0 0;
+}
+.record dd b {
+  font: 600 1.75rem/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.record dd .unit { color: var(--text-dim); font-size: 0.8125rem; }
+.record p {
+  margin: 0.5rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.record p .ref, .record p .pref { color: var(--text); }
+.record p .to { color: var(--text-faint); padding: 0 0.1rem; }
+
+/* ---- liveness ---- */
+
+/* A header figure that just changed. One pulse, no residue. */
+@keyframes stat-bump {
+  0% { color: var(--ok); transform: translateY(-1px); }
+  100% { color: inherit; transform: none; }
+}
+.stats dd.bump { animation: stat-bump 900ms ease-out; }
+
+/* Event rows that arrived on this refresh. */
+@keyframes row-fresh {
+  from { background: var(--emph); }
+  to { background: transparent; }
+}
+.grid tbody tr.fresh td { animation: row-fresh 2s ease-out; }
+
+/* ---- badges ---- */
+
+.shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.medal {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.6rem;
+  row-gap: 0.15rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  opacity: 0.62;
+}
+.medal.earned { background: var(--surface); border-color: var(--line-strong); opacity: 1; }
+
+.medal-emoji {
+  grid-row: 1 / span 2;
+  font-size: 1.35rem;
+  filter: grayscale(1);
+}
+.medal.earned .medal-emoji { filter: none; }
+
+.medal-name { font-size: 0.8125rem; font-weight: 600; }
+.medal-detail {
+  grid-column: 2;
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.medal-bar {
+  grid-column: 2;
+  height: 3px;
+  margin-top: 0.25rem;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.medal-bar i { display: block; height: 100%; background: var(--text-dim); }
+
+/* ---- kill map ---- */
+
+#killmap {
+  height: 400px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+#killmap.map-empty::after {
+  content: "No geolocated kills in this view yet.";
+  display: block;
+  padding: 1rem;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+}
+
+/* OSM tiles are drawn for a light page. In the dark theme they are inverted
+   and desaturated into something that sits with the rest of the palette --
+   the standard trick, and it keeps one tile source for both themes. */
+:root[data-theme="dark"] .map-tiles {
+  filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+}
+
+/* Medals are buttons now: reset the button chrome back to the card look, and
+   float the times-earned pill over the corner. */
+.medal {
+  position: relative;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.medal:hover { border-color: var(--line-strong); background: var(--surface); }
+.medal.earned:hover { background: var(--surface-2); }
+
+.medal-count {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  padding: 0.05rem 0.45rem;
+  background: var(--text);
+  border-radius: 999px;
+  color: var(--surface);
+  font: 600 0.6875rem/1.4 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.medal-bar.big { display: block; height: 5px; margin-top: 0.8rem; }
+
+/* ---- hero scoreboard ---- */
+
+/* Gold is for glory and nothing else: record values, earned badges, first
+   place. Grey stays structural, blue and red stay coalition. One warm accent,
+   spent only where something was achieved. */
+:root[data-theme="light"] { --gold: #9a6b06; --gold-dim: #c9a44a; }
+:root[data-theme="dark"] { --gold: #e3b34c; --gold-dim: #8a6d33; }
+
+.hero { padding-top: 1.35rem; }
+
+.hero-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.1rem;
+}
+.hero-head h1 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.hero-sub { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.8125rem; }
+
+.hero-clock { margin: 0; text-align: right; }
+.hero-clock dt {
+  color: var(--text-dim);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hero-clock dd {
+  margin: 0.1rem 0 0;
+  font: 600 1.6rem/1.1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tug {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+.tug-num {
+  font: 700 1.9rem/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.tug-num.tug-blue { color: var(--blue); }
+.tug-num.tug-red { color: var(--red); }
+
+.tug-bar {
+  flex: 1;
+  display: flex;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.tug-bar i { display: block; height: 100%; transition: width 600ms ease; }
+#tug-blue-bar { background: var(--blue); }
+#tug-red-bar { background: var(--red); margin-left: auto; }
+
+.killfeed {
+  margin: 1.1rem 0 0;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+.killfeed li { font-size: 0.8125rem; }
+.killfeed .kf-time {
+  margin-right: 0.5rem;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.killfeed .kf-weapon { margin-left: 0.5rem; color: var(--text-dim); font-size: 0.75rem; }
+.killfeed .to { color: var(--text-faint); padding: 0 0.15rem; }
+.killfeed li:first-child { font-weight: 600; }
+
+/* Glory, in gold. */
+.record dd b { color: var(--gold); }
+.medal.earned { border-color: var(--gold-dim); }
+.medal.earned .medal-name { color: var(--gold); }
+.medal-count { background: var(--gold); color: var(--surface); }
+
+.grid td.rank { font-size: 0.9375rem; }
+tr.first-place td { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+tr.first-place .name a { color: var(--gold); }
+
+#missionmap {
+  height: 440px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+#missionmap.map-empty::after {
+  content: "No geolocated kills in this view yet.";
+  display: block;
+  padding: 1rem;
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+}
