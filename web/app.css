@@ -830,3 +830,19 @@ footer {
 }
 .record p .ref, .record p .pref { color: var(--text); }
 .record p .to { color: var(--text-faint); padding: 0 0.1rem; }
+
+/* ---- liveness ---- */
+
+/* A header figure that just changed. One pulse, no residue. */
+@keyframes stat-bump {
+  0% { color: var(--ok); transform: translateY(-1px); }
+  100% { color: inherit; transform: none; }
+}
+.stats dd.bump { animation: stat-bump 900ms ease-out; }
+
+/* Event rows that arrived on this refresh. */
+@keyframes row-fresh {
+  from { background: var(--emph); }
+  to { background: transparent; }
+}
+.grid tbody tr.fresh td { animation: row-fresh 2s ease-out; }

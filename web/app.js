@@ -200,6 +200,18 @@ function num(v) {
   return v ? String(v) : `<span class="zero">0</span>`;
 }
 
+// setStat writes a header figure and pulses it when it changed, so a refresh
+// that moved a number is visible without staring at it. Rewriting the class
+// with a reflow between lets the animation restart on consecutive changes.
+function setStat(id, text) {
+  const node = el(id);
+  if (node.textContent === text) return;
+  node.textContent = text;
+  node.classList.remove("bump");
+  void node.offsetWidth;
+  node.classList.add("bump");
+}
+
 function matches(haystack) {
   if (!state.query) return true;
   return haystack.join(" ").toLowerCase().includes(state.query);
@@ -441,6 +453,11 @@ function drawLog(connection) {
     ],
     sortRows(filtered, "log"),
     (n) => {
+      // Rows that arrived since the previous refresh pulse once. seenTopId is
+      // advanced after every draw, so re-sorting or searching the same data
+      // does not re-announce it.
+      const fresh = state.seenTopId && n.id > state.seenTopId;
+
       const side =
         n.coalition === "blue" || n.coalition === "red"
           ? `<span class="flag flag-${esc(n.coalition)}"></span>`
@@ -457,7 +474,7 @@ function drawLog(connection) {
             : "")
         : `<span class="zero">—</span>`;
 
-      return `<tr>
+      return `<tr${fresh ? ' class="fresh"' : ""}>
         <td class="num">${clock(n.missionTime)}</td>
         <td><span class="ev ${EV_CLASS[n.event] || "ev-sortie"}" title="${esc(n.event)}">${esc(eventLabel(n.event))}</span></td>
         <td class="name">${side}${esc(actor)}</td>
@@ -467,6 +484,8 @@ function drawLog(connection) {
       </tr>`;
     }
   );
+
+  state.seenTopId = Math.max(state.seenTopId || 0, ...all.map((n) => n.id));
 }
 
 // --- draw / refresh --------------------------------------------------------
@@ -487,14 +506,19 @@ function draw() {
   el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
 
   const nodes = (state.log?.edges || []).map((e) => e.node);
-  const latest = Math.max(0, ...nodes.map((n) => n.missionTime || 0));
+
+  // The clock reads the newest event, not the maximum in the window. The
+  // database holds many mission runs, and taking the max let a long-dead run's
+  // 01:12:55 sit in the header while the current mission was ten minutes old --
+  // then jump backwards once those events left the window.
+  const latest = nodes.length ? nodes[0].missionTime || 0 : 0;
   const sorties = (d.playerActivity || []).reduce((s, p) => s + p.takeoffs, 0);
   const kills = (d.killsByCoalition || []).reduce((s, c) => s + c.kills, 0);
 
-  el("ro-clock").textContent = clock(latest);
-  el("ro-events").textContent = nodes.length >= LOG_ROWS ? `${LOG_ROWS}+` : String(nodes.length);
-  el("ro-sorties").textContent = String(sorties);
-  el("ro-kills").textContent = String(kills);
+  setStat("ro-clock", clock(latest));
+  setStat("ro-events", nodes.length >= LOG_ROWS ? `${LOG_ROWS}+` : String(nodes.length));
+  setStat("ro-sorties", String(sorties));
+  setStat("ro-kills", String(kills));
 }
 
 async function refresh() {
@@ -504,7 +528,8 @@ async function refresh() {
     state.data = summary;
     state.log = log;
     draw();
-    link.textContent = `Updated ${new Date().toLocaleTimeString([], { hour12: false })}`;
+    state.lastSync = Date.now();
+    link.textContent = "Live · just now";
     link.className = "status up";
     el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refreshing every ${REFRESH_MS / 1000}s`;
   } catch (err) {
@@ -976,7 +1001,8 @@ async function loadPlayer() {
     // The query succeeding and there being no such pilot are different things.
     // Reporting the second as "Offline" blames the connection for a perfectly
     // good answer, and sends you looking for a fault that is not there.
-    el("link").textContent = `Updated ${new Date().toLocaleTimeString([], { hour12: false })}`;
+    state.lastSync = Date.now();
+    el("link").textContent = "Live · just now";
     el("link").className = "status up";
     el("foot").textContent = `${API_URL} · refreshing every ${REFRESH_MS / 1000}s`;
 
@@ -1318,6 +1344,16 @@ system.addEventListener("change", (e) => {
   }
   if (!saved) applyTheme(e.matches ? "dark" : "light");
 });
+
+// The status ages in place -- "12s ago" reads as alive where a fixed
+// timestamp reads as a log line. Stops counting the moment a fetch fails,
+// since the down state owns the text then.
+setInterval(() => {
+  const link = el("link");
+  if (!state.lastSync || !link.classList.contains("up")) return;
+  const age = Math.round((Date.now() - state.lastSync) / 1000);
+  link.textContent = age < 3 ? "Live · just now" : `Live · ${age}s ago`;
+}, 1000);
 
 tick().then(openFromHash);
 schedule();
