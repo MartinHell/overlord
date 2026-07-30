@@ -45,7 +45,7 @@ type EventPage struct {
 // ordering is a descending primary key, the next page is simply everything with
 // a smaller ID. That stays correct while new events are being written, which an
 // OFFSET would not, and it never loads more than one page into memory.
-func GetEventsPage(eventType, coalition string, first int, after string) (EventPage, error) {
+func GetEventsPage(eventType, coalition string, first int, after string, missionID *uint) (EventPage, error) {
 	if first <= 0 {
 		first = defaultPageSize
 	}
@@ -60,6 +60,9 @@ func GetEventsPage(eventType, coalition string, first int, after string) (EventP
 	}
 	if coalition != "" {
 		query = query.Where("coalition = ?", coalition)
+	}
+	if missionID != nil {
+		query = query.Where("mission_id = ?", *missionID)
 	}
 	if after != "" {
 		query = query.Where("id < ?", after)
@@ -374,6 +377,7 @@ func recordEvent(d eventDetail) error {
 	target, targetCoalition, targetPos := buildTarget(d.Target)
 
 	event := models.Event{
+		MissionID:         MissionForEvent(d.Type, d.MissionTime),
 		MissionTime:       d.MissionTime,
 		Coalition:         from.Coalition,
 		InitiatorKind:     from.Kind,
@@ -438,6 +442,7 @@ func PlayerChangeSlotEvent(p *mission.StreamEventsResponse_PlayerChangeSlotEvent
 	}
 
 	event := models.Event{
+		MissionID:   MissionForEvent("player_change_slot", missionTime),
 		MissionTime: missionTime,
 		Coalition:   models.CoalitionFromProto(p.GetCoalition()),
 		SlotID:      p.GetSlotId(),

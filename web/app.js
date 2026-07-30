@@ -66,6 +66,11 @@ const state = {
   logGroup: "all",
   logSide: "all",
   player: null,
+  // scope decides whether aggregates cover the current mission or all of
+  // recorded history. Defaults to the mission: numbers that move while you fly
+  // are the whole point of the page being live.
+  scope: "mission",
+  missionID: null,
   sort: {
     weapons: { key: "shots", dir: -1 },
     pilots: { key: "takeoffs", dir: -1 },
@@ -100,21 +105,32 @@ function pref(id, name) {
 
 // --- api -------------------------------------------------------------------
 
-const QUERY = `{
-  killsByCoalition { coalition kills teamkills }
-  weaponEffectiveness { weaponType shots hits kills hitsPerShot killsPerShot }
-  playerActivity { playerID playerName takeoffs landings crashes ejections deaths }
-  landingGrades(first: 40) { playerName unitType place grade missionTime }
-  records {
+// The missionID argument every aggregate takes, as a query fragment. Empty
+// when the scope is all-time, which asks the API for exactly what it did
+// before missions existed.
+const midArg = () =>
+  state.scope === "mission" && state.missionID ? `missionID: "${state.missionID}"` : "";
+
+function dashQuery() {
+  const m = midArg();
+  const p = m ? `(${m})` : "";
+  return `{
+  missions { id startedAt events duration }
+  killsByCoalition${p} { coalition kills teamkills }
+  weaponEffectiveness${p} { weaponType shots hits kills hitsPerShot killsPerShot }
+  playerActivity${p} { playerID playerName takeoffs landings crashes ejections deaths }
+  landingGrades(first: 40${m ? ", " + m : ""}) { playerName unitType place grade missionTime }
+  records${p} {
     firstBlood { playerID playerName unitType targetType missionTime }
     longestKill { playerID playerName unitType weaponType targetType rangeM }
     highestKill { playerID playerName unitType targetType altitudeM }
     deadliest { weaponType shots kills killsPerShot }
   }
-  collateral { struck levelled trees structures top { displayName count tree } }
+  collateral${p} { struck levelled trees structures top { displayName count tree } }
   units { type displayName }
   weapons { type displayName }
 }`;
+}
 
 // The log is filtered by the database, not in the browser. Filtering 200
 // client-side rows does not work: hits outnumber kills by roughly ten to one, so
@@ -128,6 +144,8 @@ function logQuery(eventType) {
   const args = [`first: ${LOG_ROWS}`];
   if (eventType) args.push(`eventType: "${eventType}"`);
   if (state.logSide !== "all") args.push(`coalition: "${state.logSide}"`);
+  const m = midArg();
+  if (m) args.push(m);
 
   return `{ events(${args.join(", ")}) {
     edges { node {
@@ -521,17 +539,36 @@ function draw() {
   setStat("ro-kills", String(kills));
 }
 
-async function refresh() {
+async function refresh(isRerun) {
   const link = el("link");
   try {
-    const [summary, log] = await Promise.all([gql(QUERY), fetchLog()]);
+    // Scoped queries need the current mission's id before they can ask for it.
+    if (state.scope === "mission" && !state.missionID) {
+      const m = await gql(`{ missions { id } }`);
+      state.missionID = m.missions?.[0]?.id || null;
+    }
+
+    const [summary, log] = await Promise.all([gql(dashQuery()), fetchLog()]);
+
+    // A new mission can start while the page sits open. Adopt it and refetch
+    // once, so the page follows the server rather than a finished run.
+    const newest = summary.missions?.[0]?.id || null;
+    if (state.scope === "mission" && newest && newest !== state.missionID && !isRerun) {
+      state.missionID = newest;
+      return refresh(true);
+    }
+
     state.data = summary;
     state.log = log;
     draw();
     state.lastSync = Date.now();
     link.textContent = "Live · just now";
     link.className = "status up";
-    el("foot").textContent = `${API_URL} · last ${LOG_ROWS} events · refreshing every ${REFRESH_MS / 1000}s`;
+    el("foot").textContent =
+      `${API_URL} · last ${LOG_ROWS} events · refreshing every ${REFRESH_MS / 1000}s` +
+      (state.scope === "mission" && state.missionID
+        ? ` · mission #${state.missionID}`
+        : " · all recorded missions");
   } catch (err) {
     link.textContent = "Offline";
     link.className = "status down";
@@ -552,7 +589,7 @@ async function refreshLog() {
 
 // --- player page -----------------------------------------------------------
 
-const PLAYER_QUERY = `query($id: ID!, $unitType: String) { playerProfile(playerID: $id, unitType: $unitType) {
+const PLAYER_QUERY = `query($id: ID!, $unitType: String, $m: ID) { playerProfile(playerID: $id, unitType: $unitType, missionID: $m) {
   playerID playerName isAI unitType flown coalitions
   sorties landings crashes ejections deaths shots hits kills teamkills timesKilled
   killDeathRatio firstSeen lastSeen
@@ -985,15 +1022,28 @@ async function loadPlayer() {
   try {
     // The reference cards need display names, which the dashboard query
     // normally fills in. This page has to ask for them itself.
+    if (state.scope === "mission" && !state.missionID) {
+      const m = await gql(`{ missions { id } }`);
+      state.missionID = m.missions?.[0]?.id || null;
+    }
+    const m = state.scope === "mission" ? state.missionID : null;
+
     const [profile, lookup, side] = await Promise.all([
-      gqlVars(PLAYER_QUERY, { id, unitType }),
-      gql(`{ units { type displayName } weapons { type displayName } }`),
+      gqlVars(PLAYER_QUERY, { id, unitType, m }),
+      gql(`{ missions { id } units { type displayName } weapons { type displayName } }`),
       gqlVars(
-        `query($id: ID!) { collateral(playerID: $id) { struck levelled trees structures top { displayName count tree } } }`,
-        { id }
+        `query($id: ID!, $m: ID) { collateral(playerID: $id, missionID: $m) { struck levelled trees structures top { displayName count tree } } }`,
+        { id, m }
       ),
     ]);
     state.collateral = side.collateral;
+
+    // Follow the server onto a new mission, same as the dashboard.
+    const newest = lookup.missions?.[0]?.id || null;
+    if (state.scope === "mission" && newest && newest !== state.missionID) {
+      state.missionID = newest;
+      return loadPlayer();
+    }
 
     for (const u of lookup.units || []) names.unit.set(u.type, u.displayName);
     for (const w of lookup.weapons || []) names.weapon.set(w.type, w.displayName);
@@ -1137,7 +1187,7 @@ async function openCard(kind, type) {
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
         readMore(p) +
         specFacts(p) +
-        `<h4>Recorded this mission</h4>` +
+        `<h4>Recorded, all time</h4>` +
         `<dl class="card-facts">
           ${fact("sorties", p.sorties, true)}
           ${fact("shots", p.shots, true)}
@@ -1165,7 +1215,7 @@ async function openCard(kind, type) {
         `<dl class="card-facts">${identityFacts(p)}</dl>` +
         readMore(p) +
         specFacts(p) +
-        `<h4>Recorded this mission</h4>` +
+        `<h4>Recorded, all time</h4>` +
         `<dl class="card-facts">
           ${fact("shots", p.shots, true)}
           ${fact("hits", p.hits, true)}
@@ -1262,6 +1312,14 @@ function chips(container, attr, onPick) {
     draw();
   });
 }
+
+// The scope toggle exists on both pages and refetches rather than redraws,
+// since it changes what every query asks for.
+chips("scope", "scope", (v) => {
+  state.scope = v;
+  state.missionID = null;
+  tick();
+});
 
 if (PAGE === "dashboard") {
   chips("weapon-class", "class", (v) => (state.weaponClass = v));

@@ -25,6 +25,11 @@ func (r *killRecordResolver) PlayerID(ctx context.Context, obj *models.KillRecor
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
 
+// ID is the resolver for the id field.
+func (r *missionResolver) ID(ctx context.Context, obj *models.MissionSummary) (string, error) {
+	return fmt.Sprintf("%v", obj.MissionID), nil
+}
+
 // PlayerID is the resolver for the playerID field.
 func (r *playerResolver) PlayerID(ctx context.Context, obj *models.Player) (string, error) {
 	return fmt.Sprintf("%v", obj.PlayerID), nil
@@ -54,7 +59,7 @@ func (r *playerShotBreakdownResolver) PlayerID(ctx context.Context, obj *models.
 }
 
 // Events is the resolver for the events field.
-func (r *queryResolver) Events(ctx context.Context, first *int, after *string, eventType *string, coalition *string) (*models.EventConnection, error) {
+func (r *queryResolver) Events(ctx context.Context, first *int, after *string, eventType *string, coalition *string, missionID *string) (*models.EventConnection, error) {
 	filterType := ""
 	if eventType != nil {
 		filterType = *eventType
@@ -75,7 +80,7 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 		cursor = *after
 	}
 
-	page, err := controllers.GetEventsPage(filterType, filterCoalition, pageSize, cursor)
+	page, err := controllers.GetEventsPage(filterType, filterCoalition, pageSize, cursor, parseOptionalID(missionID))
 	if err != nil {
 		return nil, err
 	}
@@ -99,23 +104,28 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 	}, nil
 }
 
+// Missions is the resolver for the missions field.
+func (r *queryResolver) Missions(ctx context.Context) ([]*models.MissionSummary, error) {
+	return controllers.GetMissions()
+}
+
 // KillsByCoalition returns the kill tally for every coalition at once.
-func (r *queryResolver) KillsByCoalition(ctx context.Context) ([]*models.CoalitionKills, error) {
-	return controllers.GetKillsByCoalition()
+func (r *queryResolver) KillsByCoalition(ctx context.Context, missionID *string) ([]*models.CoalitionKills, error) {
+	return controllers.GetKillsByCoalition(parseOptionalID(missionID))
 }
 
 // WeaponEffectiveness is the resolver for the weaponEffectiveness field.
-func (r *queryResolver) WeaponEffectiveness(ctx context.Context) ([]*models.WeaponEffectiveness, error) {
-	return controllers.GetWeaponEffectiveness()
+func (r *queryResolver) WeaponEffectiveness(ctx context.Context, missionID *string) ([]*models.WeaponEffectiveness, error) {
+	return controllers.GetWeaponEffectiveness(parseOptionalID(missionID))
 }
 
 // PlayerActivity is the resolver for the playerActivity field.
-func (r *queryResolver) PlayerActivity(ctx context.Context) ([]*models.PlayerActivity, error) {
-	return controllers.GetPlayerActivity()
+func (r *queryResolver) PlayerActivity(ctx context.Context, missionID *string) ([]*models.PlayerActivity, error) {
+	return controllers.GetPlayerActivity(parseOptionalID(missionID))
 }
 
 // PlayerProfile is the resolver for the playerProfile field.
-func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unitType *string) (*models.PlayerProfileView, error) {
+func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unitType *string, missionID *string) (*models.PlayerProfileView, error) {
 	// The argument name has to match the schema, since gqlgen regenerates this
 	// signature; keep the parsed value under a different name.
 	parsed, err := strconv.ParseUint(playerID, 10, 64)
@@ -128,16 +138,16 @@ func (r *queryResolver) PlayerProfile(ctx context.Context, playerID string, unit
 		narrow = *unitType
 	}
 
-	return controllers.GetPlayerProfile(uint(parsed), narrow)
+	return controllers.GetPlayerProfile(uint(parsed), narrow, parseOptionalID(missionID))
 }
 
 // Records is the resolver for the records field.
-func (r *queryResolver) Records(ctx context.Context) (*models.Records, error) {
-	return controllers.GetRecords()
+func (r *queryResolver) Records(ctx context.Context, missionID *string) (*models.Records, error) {
+	return controllers.GetRecords(parseOptionalID(missionID))
 }
 
 // Collateral is the resolver for the collateral field.
-func (r *queryResolver) Collateral(ctx context.Context, playerID *string) (*models.Collateral, error) {
+func (r *queryResolver) Collateral(ctx context.Context, playerID *string, missionID *string) (*models.Collateral, error) {
 	// No player means the whole mission, which is the interesting number: DCS
 	// reports most scenery damage with no initiator at all, so the sum across
 	// every pilot is far short of the total.
@@ -151,17 +161,17 @@ func (r *queryResolver) Collateral(ctx context.Context, playerID *string) (*mode
 		id = &v
 	}
 
-	return controllers.GetCollateral(id)
+	return controllers.GetCollateral(id, parseOptionalID(missionID))
 }
 
 // LandingGrades is the resolver for the landingGrades field.
-func (r *queryResolver) LandingGrades(ctx context.Context, first *int) ([]*models.LandingGrade, error) {
+func (r *queryResolver) LandingGrades(ctx context.Context, first *int, missionID *string) ([]*models.LandingGrade, error) {
 	limit := 0
 	if first != nil {
 		limit = *first
 	}
 
-	return controllers.GetLandingGrades(limit)
+	return controllers.GetLandingGrades(limit, parseOptionalID(missionID))
 }
 
 // UnitProfile is the resolver for the unitProfile field.
@@ -296,6 +306,9 @@ func (r *Resolver) Event() generated.EventResolver { return &eventResolver{r} }
 // KillRecord returns generated.KillRecordResolver implementation.
 func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecordResolver{r} }
 
+// Mission returns generated.MissionResolver implementation.
+func (r *Resolver) Mission() generated.MissionResolver { return &missionResolver{r} }
+
 // Player returns generated.PlayerResolver implementation.
 func (r *Resolver) Player() generated.PlayerResolver { return &playerResolver{r} }
 
@@ -335,6 +348,7 @@ func (r *Resolver) Weapon() generated.WeaponResolver { return &weaponResolver{r}
 type (
 	eventResolver               struct{ *Resolver }
 	killRecordResolver          struct{ *Resolver }
+	missionResolver             struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
 	playerActivityResolver      struct{ *Resolver }
 	playerProfileResolver       struct{ *Resolver }

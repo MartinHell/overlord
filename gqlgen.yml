@@ -67,6 +67,9 @@ models:
   Matchup:
     model:
       - github.com/MartinHell/overlord/models.Matchup
+  Mission:
+    model:
+      - github.com/MartinHell/overlord/models.MissionSummary
   Records:
     model:
       - github.com/MartinHell/overlord/models.Records

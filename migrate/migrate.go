@@ -27,11 +27,83 @@ func main() {
 		&models.Weapon{},
 		&models.Target{},
 		&models.Event{},
+		&models.Mission{},
 	); err != nil {
 		logs.Sugar.Fatalf("Migration failed: %v", err)
 	}
 
+	if err := backfillMissions(initializers.DB); err != nil {
+		logs.Sugar.Fatalf("Failed to backfill missions: %v", err)
+	}
+
 	logs.Sugar.Infoln("Migration complete")
+}
+
+// backfillMissions segments the events recorded before the missions table
+// existed into runs, using the same signals as live ingestion: an explicit
+// mission_start, or the mission clock falling. Only rows with no mission are
+// touched, so this is safe to run again.
+func backfillMissions(db *gorm.DB) error {
+	var pending int64
+	if err := db.Model(&models.Event{}).Where("mission_id IS NULL").Count(&pending).Error; err != nil {
+		return err
+	}
+	if pending == 0 {
+		return nil
+	}
+
+	type row struct {
+		ID          uint
+		Event       string
+		MissionTime float64
+	}
+
+	var events []row
+	if err := db.Model(&models.Event{}).
+		Select("events.id, events.event, events.mission_time").
+		Where("events.mission_id IS NULL").
+		Order("events.id").
+		Scan(&events).Error; err != nil {
+		return err
+	}
+
+	// A segment is a run of consecutive event ids that belong to one mission.
+	type segment struct{ first, last uint }
+	var segments []segment
+	clock := 0.0
+
+	for _, e := range events {
+		newRun := len(segments) == 0 ||
+			e.Event == "mission_start" ||
+			(e.MissionTime > 0 && clock-e.MissionTime > 60)
+
+		if newRun {
+			segments = append(segments, segment{first: e.ID, last: e.ID})
+			clock = e.MissionTime
+			continue
+		}
+
+		segments[len(segments)-1].last = e.ID
+		if e.MissionTime > clock {
+			clock = e.MissionTime
+		}
+	}
+
+	for _, seg := range segments {
+		mission := models.Mission{}
+		if err := db.Create(&mission).Error; err != nil {
+			return err
+		}
+
+		if err := db.Model(&models.Event{}).
+			Where("id >= ? AND id <= ? AND mission_id IS NULL", seg.first, seg.last).
+			Update("mission_id", mission.MissionID).Error; err != nil {
+			return err
+		}
+	}
+
+	logs.Sugar.Infof("Backfilled %d events into %d missions", pending, len(segments))
+	return nil
 }
 
 // dropPlayerIP removes the players.ip column and any addresses already stored

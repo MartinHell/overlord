@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
@@ -19,6 +20,88 @@ import (
 // Postgres requires every non-aggregated selected column to appear in the GROUP
 // BY, and COUNT(*) FILTER is not portable, so conditional counts use
 // SUM(CASE WHEN ...).
+
+// scopeMission narrows an events-rooted query to one mission when set. Nil
+// means all of recorded history, which is what the API defaulted to before
+// missions existed, so existing callers keep their meaning.
+func scopeMission(missionID *uint) func(*gorm.DB) *gorm.DB {
+	return func(q *gorm.DB) *gorm.DB {
+		if missionID == nil {
+			return q
+		}
+		return q.Where("events.mission_id = ?", *missionID)
+	}
+}
+
+// GetMissions lists recorded missions, newest first. Start, size and duration
+// are derived from the events rather than stored, so backfilled missions
+// report them exactly like live ones.
+func GetMissions() ([]*models.MissionSummary, error) {
+	// MIN over the id rather than over created_at: an aggregated timestamp
+	// comes back from SQLite as a bare string that will not scan into
+	// time.Time, where an integer id scans anywhere. The timestamps behind
+	// those ids are fetched plainly in a second query.
+	var rows []struct {
+		MissionID uint
+		Events    int
+		Duration  float64
+		FirstID   *uint
+	}
+
+	err := initializers.DB.Model(&models.Mission{}).
+		Select(`missions.mission_id AS mission_id,
+			COUNT(events.id) AS events,
+			COALESCE(MAX(events.mission_time), 0) AS duration,
+			MIN(events.id) AS first_id`).
+		Joins("LEFT JOIN events ON events.mission_id = missions.mission_id").
+		Group("missions.mission_id").
+		Order("missions.mission_id DESC").
+		Scan(&rows).Error
+	if err != nil {
+		logs.Sugar.Errorf("Failed to list missions: %v", err)
+		return nil, err
+	}
+
+	var firstIDs []uint
+	for _, r := range rows {
+		if r.FirstID != nil {
+			firstIDs = append(firstIDs, *r.FirstID)
+		}
+	}
+
+	started := map[uint]time.Time{}
+	if len(firstIDs) > 0 {
+		var firsts []struct {
+			ID        uint
+			CreatedAt time.Time
+		}
+		if err := initializers.DB.Model(&models.Event{}).
+			Select("events.id, events.created_at").
+			Where("events.id IN ?", firstIDs).
+			Scan(&firsts).Error; err != nil {
+			logs.Sugar.Errorf("Failed to resolve mission start times: %v", err)
+			return nil, err
+		}
+		for _, f := range firsts {
+			started[f.ID] = f.CreatedAt
+		}
+	}
+
+	result := make([]*models.MissionSummary, 0, len(rows))
+	for _, r := range rows {
+		summary := &models.MissionSummary{
+			MissionID: r.MissionID,
+			Events:    r.Events,
+			Duration:  r.Duration,
+		}
+		if r.FirstID != nil {
+			summary.StartedAt = started[*r.FirstID]
+		}
+		result = append(result, summary)
+	}
+
+	return result, nil
+}
 
 // shotRow is one row of the grouped result, before it is nested for GraphQL.
 type shotRow struct {
@@ -159,7 +242,7 @@ func nestShotRows(rows []shotRow) []*models.PlayerShotBreakdown {
 // A teamkill only counts when both sides are known: two unknown coalitions
 // compare equal but say nothing about whose side anyone was on, and every event
 // recorded before coalition tracking existed is unknown.
-func GetKillsByCoalition() ([]*models.CoalitionKills, error) {
+func GetKillsByCoalition(missionID *uint) ([]*models.CoalitionKills, error) {
 	// Rows predating coalition tracking have an empty string rather than
 	// "unknown", so normalise before grouping.
 	const coalitionExpr = `CASE WHEN events.coalition IS NULL OR events.coalition = '' THEN 'unknown' ELSE events.coalition END`
@@ -167,6 +250,7 @@ func GetKillsByCoalition() ([]*models.CoalitionKills, error) {
 	var rows []models.CoalitionKills
 
 	err := initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(coalitionExpr+` AS coalition,
 			COUNT(*) AS kills,
 			SUM(CASE WHEN events.coalition <> '' AND events.coalition <> 'unknown'
@@ -193,10 +277,11 @@ func GetKillsByCoalition() ([]*models.CoalitionKills, error) {
 // Hits and kills against scenery are excluded: DCS reports a blast catching a
 // tree as a hit, and counting those would inflate accuracy for anything with a
 // warhead. Shots have no target, so they are counted unconditionally.
-func GetWeaponEffectiveness() ([]*models.WeaponEffectiveness, error) {
+func GetWeaponEffectiveness(missionID *uint) ([]*models.WeaponEffectiveness, error) {
 	var rows []models.WeaponEffectiveness
 
 	err := initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`weapons.type AS weapon_type,
 			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
 			SUM(CASE WHEN events.event = 'hit'
@@ -224,10 +309,11 @@ func GetWeaponEffectiveness() ([]*models.WeaponEffectiveness, error) {
 
 // GetPlayerActivity summarises sorties per player: how many started, how many
 // ended in a landing, and how many ended badly.
-func GetPlayerActivity() ([]*models.PlayerActivity, error) {
+func GetPlayerActivity(missionID *uint) ([]*models.PlayerActivity, error) {
 	var rows []models.PlayerActivity
 
 	err := initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`players.player_id AS player_id,
 			players.player_name AS player_name,
 			SUM(CASE WHEN events.event IN ('takeoff', 'runway_takeoff') THEN 1 ELSE 0 END) AS takeoffs,
@@ -255,7 +341,7 @@ func GetPlayerActivity() ([]*models.PlayerActivity, error) {
 // GetLandingGrades returns recent graded landings, newest first. The grade is
 // free text as DCS reported it, which for carrier traps is the wire and the
 // deviations.
-func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
+func GetLandingGrades(limit int, missionID *uint) ([]*models.LandingGrade, error) {
 	if limit <= 0 {
 		limit = defaultPageSize
 	}
@@ -266,6 +352,7 @@ func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
 	var rows []models.LandingGrade
 
 	err := initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`players.player_name AS player_name,
 			units.type AS unit_type,
 			events.place AS place,
@@ -303,7 +390,7 @@ func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
 // player_id, not a scan into Go.
 // unitType narrows the whole profile to one airframe when non-empty, which is
 // what the per-model page asks for.
-func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView, error) {
+func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.PlayerProfileView, error) {
 	var player models.Player
 	if err := player.GetPlayerByPlayerID(playerID); err != nil {
 		logs.Sugar.Errorf("Failed to load player %d: %v", playerID, err)
@@ -342,6 +429,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 		Total int
 	}
 	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select("units.type AS type, COUNT(*) AS total").
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
 		Where("events.player_id = ? AND events.initiator_kind = ?", playerID, models.ObjectKindUnit).
@@ -364,6 +452,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 		FirstSeen, LastSeen                           float64
 	}
 	err := onUnit(db.Model(&models.Event{})).
+		Scopes(scopeMission(missionID)).
 		Select(`SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
 			SUM(CASE WHEN events.event IN ('land','runway_touch') THEN 1 ELSE 0 END) AS landings,
 			SUM(CASE WHEN events.event = 'crash' THEN 1 ELSE 0 END) AS crashes,
@@ -398,6 +487,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 		Total     int
 	}
 	if err := onUnit(db.Model(&models.Event{})).
+		Scopes(scopeMission(missionID)).
 		Select("events.coalition AS coalition, COUNT(*) AS total").
 		Where("events.player_id = ? AND events.coalition <> '' AND events.coalition <> 'unknown'", playerID).
 		Group("events.coalition").
@@ -413,6 +503,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 	// Per airframe.
 	var aircraft []models.PlayerAircraftStats
 	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`units.type AS unit_type,
 			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
 			SUM(CASE WHEN events.event IN ('land','runway_touch') THEN 1 ELSE 0 END) AS landings,
@@ -440,6 +531,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 	// Per weapon.
 	var weapons []models.WeaponEffectiveness
 	if err := onUnit(db.Model(&models.Event{})).
+		Scopes(scopeMission(missionID)).
 		Select(`weapons.type AS weapon_type,
 			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
 			SUM(CASE WHEN events.event = 'hit'
@@ -462,6 +554,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 	// Matchups: what this player killed, by the airframe they were flying.
 	var matchups []models.Matchup
 	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select("units.type AS unit_type, tunits.type AS target_type, COUNT(*) AS kills").
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
 		Joins("JOIN targets ON targets.target_id = events.target_id").
@@ -488,11 +581,13 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 	// within a mission; across missions a reused slot name could in principle
 	// be credited to the wrong player.
 	playerUnits := onUnit(db.Model(&models.Event{})).
+		Scopes(scopeMission(missionID)).
 		Select("DISTINCT events.initiator_name").
 		Where("events.player_id = ? AND events.initiator_name <> ?", playerID, "")
 
 	var killedBy []models.Matchup
 	killedByQuery := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select("tunits.type AS unit_type, units.type AS target_type, COUNT(*) AS kills").
 		Joins("JOIN targets ON targets.target_id = events.target_id").
 		Joins("JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
@@ -521,6 +616,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 	// Graded landings, newest first.
 	var grades []models.LandingGrade
 	if err := db.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`players.player_name AS player_name,
 			units.type AS unit_type,
 			events.place AS place,
@@ -565,6 +661,7 @@ func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView
 	// the chart summed 270 kills against a headline of 251 on the same page,
 	// which reads as one of the two being wrong.
 	if err := onUnit(db.Model(&models.Event{})).
+		Scopes(scopeMission(missionID)).
 		Select(bucketExpr+` AS bucket,
 			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
 			SUM(CASE WHEN events.event = 'kill'
@@ -621,8 +718,9 @@ type killRecordRow struct {
 
 // killRecords selects real kills -- something that could shoot back -- with the
 // names attached. Scenery is excluded, so "first blood" is never a shrub.
-func killRecords() *gorm.DB {
+func killRecords(missionID *uint) *gorm.DB {
 	return initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`events.player_id AS player_id,
 			players.player_name AS player_name,
 			units.type AS unit_type,
@@ -657,13 +755,13 @@ func toKillRecord(r killRecordRow, rangeM float64) *models.KillRecord {
 
 // GetRecords finds the standout moments: the first kill, the longest, the
 // highest, and the weapon that converted best.
-func GetRecords() (*models.Records, error) {
+func GetRecords(missionID *uint) (*models.Records, error) {
 	out := &models.Records{}
 
 	// First blood. mission_time > 0 skips rows recorded before the clock was
 	// captured, which would otherwise always win.
 	var first killRecordRow
-	err := killRecords().
+	err := killRecords(missionID).
 		Where("events.mission_time > 0").
 		Order("events.mission_time ASC").
 		Limit(1).
@@ -678,7 +776,7 @@ func GetRecords() (*models.Records, error) {
 
 	// Highest kill, by the shooter's altitude.
 	var highest killRecordRow
-	if err := killRecords().
+	if err := killRecords(missionID).
 		Where("events.initiator_alt > 0").
 		Order("events.initiator_alt DESC").
 		Limit(1).
@@ -694,7 +792,7 @@ func GetRecords() (*models.Records, error) {
 	// so the candidates come back and the maximum is found here. Only kills
 	// carrying both positions qualify, which is roughly half of them.
 	var candidates []killRecordRow
-	if err := killRecords().
+	if err := killRecords(missionID).
 		Where("events.initiator_lat <> 0 AND events.target_lat <> 0").
 		Scan(&candidates).Error; err != nil {
 		logs.Sugar.Errorf("Failed to load kill geometry: %v", err)
@@ -712,7 +810,7 @@ func GetRecords() (*models.Records, error) {
 
 	// Most efficient weapon, over a sample big enough to mean something. One
 	// lucky shot would otherwise take this every time.
-	weapons, err := GetWeaponEffectiveness()
+	weapons, err := GetWeaponEffectiveness(missionID)
 	if err != nil {
 		return nil, err
 	}
@@ -756,7 +854,7 @@ func haversineM(lat1, lon1, lat2, lon2 float64) float64 {
 // This is the one place scenery is counted rather than filtered out. Everywhere
 // else it is excluded, because a bomb catching a wood is not marksmanship and
 // counting it would flatter every weapon with a warhead.
-func GetCollateral(playerID *uint) (*models.Collateral, error) {
+func GetCollateral(playerID *uint, missionID *uint) (*models.Collateral, error) {
 	var rows []struct {
 		Type   string
 		Struck int
@@ -764,6 +862,7 @@ func GetCollateral(playerID *uint) (*models.Collateral, error) {
 	}
 
 	q := initializers.DB.Model(&models.Event{}).
+		Scopes(scopeMission(missionID)).
 		Select(`units.type AS type,
 			SUM(CASE WHEN events.event = 'hit' THEN 1 ELSE 0 END) AS struck,
 			SUM(CASE WHEN events.event = 'kill' THEN 1 ELSE 0 END) AS killed`).

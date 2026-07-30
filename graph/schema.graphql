@@ -226,6 +226,18 @@ type Matchup {
 }
 
 """
+One recorded run of a mission. Start, size and duration are derived from the
+events, so backfilled missions report them exactly like live ones.
+"""
+type Mission {
+    id: ID!
+    startedAt: Time!
+    events: Int!
+    "Highest mission clock seen, in seconds."
+    duration: Float!
+}
+
+"""
 The standout moments of a mission.
 
 Everything else here is an aggregate, which says how a mission went but never
@@ -387,21 +399,23 @@ type WeaponShotBreakdown {
 
 type Query {
     "Omit coalition to get both sides at once; pass red or blue to narrow."
-    events(first: Int, after: String, eventType: String, coalition: String): EventConnection
-    "Kill tally per coalition, covering both sides."
-    killsByCoalition: [CoalitionKills!]!
+    events(first: Int, after: String, eventType: String, coalition: String, missionID: ID): EventConnection
+    "Recorded missions, newest first."
+    missions: [Mission!]!
+    "Kill tally per coalition, covering both sides. Omit missionID for all of recorded history."
+    killsByCoalition(missionID: ID): [CoalitionKills!]!
     "Shots, hits, kills, accuracy and Pk per weapon type."
-    weaponEffectiveness: [WeaponEffectiveness!]!
+    weaponEffectiveness(missionID: ID): [WeaponEffectiveness!]!
     "Sorties per player and how they ended."
-    playerActivity: [PlayerActivity!]!
+    playerActivity(missionID: ID): [PlayerActivity!]!
     "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."
-    playerProfile(playerID: ID!, unitType: String): PlayerProfile
+    playerProfile(playerID: ID!, unitType: String, missionID: ID): PlayerProfile
     "Standout moments: first blood, longest and highest kills, most efficient weapon."
-    records: Records
+    records(missionID: ID): Records
     "Scenery caught in the blast. Omit playerID for the whole mission, including the majority DCS reports with no initiator."
-    collateral(playerID: ID): Collateral
+    collateral(playerID: ID, missionID: ID): Collateral
     "Recent graded landings, newest first."
-    landingGrades(first: Int): [LandingGrade!]!
+    landingGrades(first: Int, missionID: ID): [LandingGrade!]!
     "Reference card and recorded stats for one airframe or vehicle type."
     unitProfile(type: String!): UnitProfile
     "Reference card and recorded stats for one store."
