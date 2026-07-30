@@ -343,6 +343,115 @@ main {
 }
 .pref:hover { border-bottom-color: var(--line-strong); }
 
+/* Airframe filter. Links, not buttons: each one is a page. */
+.filter { margin-top: 0.9rem; }
+
+.chip {
+  padding: 0.25rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+.chip:hover { background: var(--surface-2); color: var(--text); }
+.chip.on { background: var(--text); border-color: var(--text); color: var(--surface); }
+
+.chip-more {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+}
+
+/* Per-row route into the narrowed page. Separate from the type name, which
+   opens the reference card -- one cell doing two different things is a guess. */
+.row-go {
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.row-go:hover { color: var(--text); }
+
+/* ---- charts ---- */
+
+.chart { margin: 0; }
+.chart svg { display: block; width: 100%; height: 130px; }
+
+.tl-axis { stroke: var(--line-strong); stroke-width: 1; }
+.tl-up { fill: var(--text); }
+.tl-down { fill: var(--text-faint); }
+
+.chart figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin-top: 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+.chart figcaption span { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+.key { width: 10px; height: 10px; border-radius: 2px; }
+.key-up { background: var(--text); }
+.key-down { background: var(--text-faint); }
+
+.chart-scale { margin: 0.6rem 0 0; color: var(--text-faint); font-size: 0.75rem; }
+
+/* Matchup grid. The count lives in the cell, so this is the figure and the
+   table at once -- there is no second copy of the numbers to keep in step. */
+table.hm { font-variant-numeric: tabular-nums; }
+table.hm th[scope="row"] {
+  position: static;
+  padding-right: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+table.hm thead th { vertical-align: bottom; }
+.hm-col {
+  display: inline-block;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hm-cell {
+  position: relative;
+  min-width: 2.6rem;
+  padding: 0.4rem 0.35rem;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+/* Shading is a fill layer rather than a mixed colour, so it follows the theme
+   token directly and needs no colour-mix support to work. */
+.hm-fill {
+  position: absolute;
+  inset: 1px;
+  border-radius: 3px;
+  background: var(--text);
+}
+/* Contrast is decided when the cell is built, not left to a blend mode. The
+   fill is the foreground colour at varying opacity, so past roughly half it is
+   closer to the foreground than the surface and the number has to flip. Both
+   tokens swap with the theme, so this holds in light and dark without a second
+   rule. */
+.hm-cell b {
+  position: relative;
+  color: var(--text);
+  font-weight: 500;
+}
+.hm-cell.dense b { color: var(--surface); }
+.hm-cell .zero { color: var(--text-faint); }
+
 /* ---- coalitions ---- */
 
 .standing { display: grid; gap: 0.85rem; }

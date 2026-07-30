@@ -61,6 +61,11 @@ type PlayerProfileView struct {
 	PlayerName string
 	// IsAI marks the synthetic per-coalition AI players rather than a human.
 	IsAI bool
+	// UnitType is the airframe this record is narrowed to, empty for the whole
+	// pilot. Flown is every airframe they have flown regardless of narrowing,
+	// so the filter still offers a way back out.
+	UnitType string
+	Flown    []string
 	// Coalitions this player has been seen on, busiest first. A human can
 	// switch sides between sorties, so this is a list rather than a field.
 	Coalitions []string
@@ -85,6 +90,21 @@ type PlayerProfileView struct {
 	Matchups      []*Matchup
 	KilledBy      []*Matchup
 	LandingGrades []*LandingGrade
+
+	// BucketSeconds is how wide each Timeline bucket is, sized from the mission
+	// span so the shape reads the same for a short mission and a long one.
+	BucketSeconds int
+	Timeline      []*TimelineBucket
+}
+
+// TimelineBucket is one slice of the mission clock.
+type TimelineBucket struct {
+	// T is the mission time at the start of the bucket, in seconds.
+	T       float64
+	Sorties int
+	Kills   int
+	Losses  int
+	Shots   int
 }
 
 // KillDeathRatio counts a death as a pilot death or a crash, which is as close

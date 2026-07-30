@@ -67,6 +67,9 @@ models:
   Matchup:
     model:
       - github.com/MartinHell/overlord/models.Matchup
+  TimelineBucket:
+    model:
+      - github.com/MartinHell/overlord/models.TimelineBucket
   LandingGrade:
     model:
       - github.com/MartinHell/overlord/models.LandingGrade

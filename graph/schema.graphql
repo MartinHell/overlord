@@ -150,6 +150,10 @@ type PlayerProfile {
     playerName: String!
     "True for the synthetic AI players rather than a human."
     isAI: Boolean!
+    "The airframe this record is narrowed to. Null for the pilot's whole record."
+    unitType: String
+    "Every airframe this pilot has flown, whatever the current narrowing."
+    flown: [String!]!
     "Sides this player has been seen on, busiest first. A human can switch between sorties."
     coalitions: [String!]!
 
@@ -180,6 +184,21 @@ type PlayerProfile {
     "What killed this player. unitType is what they were flying, targetType is what killed them."
     killedBy: [Matchup!]!
     landingGrades: [LandingGrade!]!
+
+    "How wide each timeline bucket is, sized from the mission span."
+    bucketSeconds: Int!
+    "Activity across the mission clock."
+    timeline: [TimelineBucket!]!
+}
+
+"One slice of the mission clock."
+type TimelineBucket {
+    "Mission time at the start of the bucket, in seconds."
+    t: Float!
+    sorties: Int!
+    kills: Int!
+    losses: Int!
+    shots: Int!
 }
 
 "One player's record in one airframe."
@@ -304,8 +323,8 @@ type Query {
     weaponEffectiveness: [WeaponEffectiveness!]!
     "Sorties per player and how they ended."
     playerActivity: [PlayerActivity!]!
-    "Everything recorded about one player, human or AI."
-    playerProfile(playerID: ID!): PlayerProfile
+    "Everything recorded about one player, human or AI. Pass unitType to narrow it to one airframe."
+    playerProfile(playerID: ID!, unitType: String): PlayerProfile
     "Recent graded landings, newest first."
     landingGrades(first: Int): [LandingGrade!]!
     "Reference card and recorded stats for one airframe or vehicle type."

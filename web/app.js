@@ -74,8 +74,6 @@ const state = {
     log: { key: "id", dir: -1 },
     "p-aircraft": { key: "sorties", dir: -1 },
     "p-weapons": { key: "shots", dir: -1 },
-    "p-matchups": { key: "kills", dir: -1 },
-    "p-killedby": { key: "kills", dir: -1 },
     "p-grades": { key: "missionTime", dir: -1 },
   },
 };
@@ -548,8 +546,8 @@ async function refreshLog() {
 
 // --- player page -----------------------------------------------------------
 
-const PLAYER_QUERY = `query($id: ID!) { playerProfile(playerID: $id) {
-  playerID playerName isAI coalitions
+const PLAYER_QUERY = `query($id: ID!, $unitType: String) { playerProfile(playerID: $id, unitType: $unitType) {
+  playerID playerName isAI unitType flown coalitions
   sorties landings crashes ejections deaths shots hits kills teamkills timesKilled
   killDeathRatio firstSeen lastSeen
   aircraft { unitType sorties landings shots hits kills losses ejections hitsPerShot killsPerShot }
@@ -557,7 +555,132 @@ const PLAYER_QUERY = `query($id: ID!) { playerProfile(playerID: $id) {
   matchups { unitType targetType kills }
   killedBy { unitType targetType kills }
   landingGrades { unitType place grade missionTime }
+  bucketSeconds timeline { t sorties kills losses shots }
 } }`;
+
+// Mission-clock activity, drawn as inline SVG. No chart library: this is one
+// shape, and a dependency to draw it would be larger than the whole app.
+//
+// Kills rise from the axis and losses fall below it. The split is carried by
+// position rather than hue, which keeps red and blue meaning coalition and
+// nothing else, and survives both themes without a second palette.
+function timelineChart(buckets, bucketSeconds) {
+  const rows = (buckets || []).filter((b) => b.kills || b.losses || b.sorties || b.shots);
+  if (!rows.length) return `<p class="none">Nothing to plot yet.</p>`;
+
+  const W = 720;
+  const H = 120;
+  const mid = H / 2;
+
+  // Kills and losses get their own scale. Shared, the blue AI's 75 losses in a
+  // bucket flatten its 21 kills into nothing and the chart only shows one of
+  // the two things it is for. The cost is that a bar above cannot be compared
+  // by height to one below, so the caption gives both peaks and the axis label
+  // says which is which.
+  const upPeak = Math.max(1, ...rows.map((b) => b.kills));
+  const downPeak = Math.max(1, ...rows.map((b) => b.losses));
+
+  const t0 = rows[0].t;
+  const t1 = rows[rows.length - 1].t + bucketSeconds;
+  const span = Math.max(bucketSeconds, t1 - t0);
+  const x = (t) => ((t - t0) / span) * W;
+  const bw = Math.max(1.5, (W / span) * bucketSeconds - 1);
+
+  const bars = rows
+    .map((b) => {
+      const left = x(b.t);
+      const up = (b.kills / upPeak) * (mid - 8);
+      const down = (b.losses / downPeak) * (mid - 8);
+      const title = `${clock(b.t)} — ${b.kills} kills, ${b.losses} lost, ${b.shots} shots`;
+      return (
+        `<g><title>${esc(title)}</title>` +
+        (b.kills ? `<rect class="tl-up" x="${left}" y="${mid - up}" width="${bw}" height="${up}"/>` : "") +
+        (b.losses ? `<rect class="tl-down" x="${left}" y="${mid}" width="${bw}" height="${down}"/>` : "") +
+        `</g>`
+      );
+    })
+    .join("");
+
+  return `
+    <figure class="chart">
+      <svg viewBox="0 0 ${W} ${H}" role="img" preserveAspectRatio="none"
+           aria-label="Kills above the line and losses below it, across the mission clock.">
+        <line class="tl-axis" x1="0" y1="${mid}" x2="${W}" y2="${mid}"/>
+        ${bars}
+      </svg>
+      <figcaption>
+        <span><i class="key key-up"></i>Kills, peak ${upPeak}</span>
+        <span><i class="key key-down"></i>Lost, peak ${downPeak}</span>
+        <span class="chart-scale">
+          ${clock(t0)} → ${clock(t1)} · ${bucketSeconds}s buckets · each half scaled to its own peak
+        </span>
+      </figcaption>
+    </figure>`;
+}
+
+// A matchup grid: rows are what the pilot flew, columns what they met. The
+// count sits in the cell, so this is the table as well as the picture -- there
+// is no second copy of the same numbers to keep in step.
+//
+// Capped, and says so when it caps: a silent top-N reads as "that is all of
+// it", which is exactly the wrong impression on a page about someone's record.
+// A newline separator, because a DCS type identifier can contain spaces and
+// dots but never a line break, so two different pairs cannot collide on one key.
+const cellKey = (a, b) => `${a}\n${b}`;
+
+function heatmap(rows, opts) {
+  if (!rows || !rows.length) return `<p class="none">Nothing recorded.</p>`;
+
+  const MAX_ROWS = 6;
+  const MAX_COLS = 9;
+
+  const total = (key) => {
+    const sums = new Map();
+    for (const r of rows) sums.set(r[key], (sums.get(r[key]) || 0) + r.kills);
+    return [...sums.entries()].sort((a, b) => b[1] - a[1]);
+  };
+
+  const allRows = total("unitType");
+  const allCols = total("targetType");
+  const keepRows = allRows.slice(0, MAX_ROWS).map((e) => e[0]);
+  const keepCols = allCols.slice(0, MAX_COLS).map((e) => e[0]);
+
+  const cell = new Map();
+  for (const r of rows) cell.set(`${cellKey(r.unitType, r.targetType)}`, r.kills);
+  const peak = Math.max(1, ...rows.map((r) => r.kills));
+
+  const head = keepCols
+    .map((c) => `<th scope="col"><span class="hm-col">${esc(unitName(c))}</span></th>`)
+    .join("");
+
+  const body = keepRows
+    .map((rt) => {
+      const cells = keepCols
+        .map((ct) => {
+          const n = cell.get(cellKey(rt, ct)) || 0;
+          if (!n) return `<td class="hm-cell"><span class="zero">·</span></td>`;
+          const fill = 0.12 + (n / peak) * 0.78;
+          return `<td class="hm-cell${fill > 0.55 ? " dense" : ""}" title="${esc(
+            `${unitName(rt)} → ${unitName(ct)}: ${n}`
+          )}"><span class="hm-fill" style="opacity:${fill.toFixed(3)}"></span><b>${n}</b></td>`;
+        })
+        .join("");
+      return `<tr><th scope="row">${ref("unit", rt)}</th>${cells}</tr>`;
+    })
+    .join("");
+
+  const hiddenRows = allRows.length - keepRows.length;
+  const hiddenCols = allCols.length - keepCols.length;
+  const note = [
+    hiddenRows > 0 ? `${hiddenRows} more ${opts.rowNoun}` : "",
+    hiddenCols > 0 ? `${hiddenCols} more ${opts.colNoun}` : "",
+  ].filter(Boolean);
+
+  return (
+    `<div class="tw"><table class="grid hm"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>` +
+    (note.length ? `<p class="chart-scale">Showing the busiest — ${note.join(" and ")} not shown.</p>` : "")
+  );
+}
 
 function headline(label, value, sub) {
   return `<div><dt>${esc(label)}</dt><dd>${esc(value)}${
@@ -597,10 +720,52 @@ function drawPlayer() {
   ].join("");
 
   const bits = [];
-  if (best && best.kills) bits.push(`Deadliest in the ${unitName(best.unitType)} with ${best.kills} kills.`);
+  if (!p.unitType && best && best.kills) {
+    bits.push(`Deadliest in the ${unitName(best.unitType)} with ${best.kills} kills.`);
+  }
   if (favourite && favourite.shots) bits.push(`Reaches for the ${weaponName(favourite.weaponType)} most often.`);
   if (p.lastSeen) bits.push(`Active between ${clock(p.firstSeen)} and ${clock(p.lastSeen)} mission time.`);
   el("player-note").textContent = bits.join(" ");
+
+  // Filter and per-model page are the same control. These are real links, so a
+  // narrowed view is as shareable as the pilot's own page.
+  // Only the busiest few as chips. A pilot with nineteen airframes would
+  // otherwise get nineteen chips, which is a wall rather than a filter -- the
+  // rest stay one click away in the aircraft table below.
+  const base = `/player/${encodeURIComponent(p.playerID)}`;
+  const flown = p.flown || [];
+  const CHIPS = 7;
+  const shown = flown.slice(0, CHIPS);
+  if (p.unitType && !shown.includes(p.unitType)) shown.push(p.unitType);
+
+  el("player-filter").innerHTML =
+    [
+      `<a class="chip${p.unitType ? "" : " on"}" href="${base}">All aircraft</a>`,
+      ...shown.map(
+        (t) =>
+          `<a class="chip${p.unitType === t ? " on" : ""}" href="${base}/${encodeURIComponent(t)}">${esc(
+            unitName(t)
+          )}</a>`
+      ),
+    ].join("") +
+    (flown.length > shown.length
+      ? `<span class="chip-more">+${flown.length - shown.length} more below</span>`
+      : "");
+
+  el("player-timeline").innerHTML = timelineChart(p.timeline, p.bucketSeconds);
+
+  el("p-matchups-wrap").innerHTML = heatmap(p.matchups, {
+    rowNoun: "aircraft",
+    colNoun: "target types",
+  });
+  el("p-killedby-wrap").innerHTML = heatmap(p.killedBy, {
+    rowNoun: "aircraft",
+    colNoun: "attacker types",
+  });
+
+  // With one airframe the aircraft table is a single row restating the
+  // headline, so it goes away rather than repeating itself.
+  el("p-aircraft-panel").hidden = Boolean(p.unitType);
 
   render(
     "p-aircraft",
@@ -612,6 +777,7 @@ function drawPlayer() {
       { label: "Hits", key: "hits", num: true },
       { label: "Lost", key: "losses", num: true },
       { label: "Kills / shot", key: "killsPerShot", num: true },
+      { label: "" },
     ],
     sortRows(p.aircraft || [], "p-aircraft"),
     (a) => `<tr>
@@ -622,6 +788,8 @@ function drawPlayer() {
       <td class="num">${num(a.hits)}</td>
       <td class="num">${num(a.losses)}</td>
       <td class="num">${a.shots ? ratio(a.killsPerShot) : `<span class="zero">—</span>`}</td>
+      <td class="num"><a class="row-go" href="${base}/${encodeURIComponent(a.unitType)}"
+        aria-label="${esc(`Narrow to ${unitName(a.unitType)}`)}">View →</a></td>
     </tr>`,
     drawPlayer
   );
@@ -647,38 +815,6 @@ function drawPlayer() {
   );
 
   render(
-    "p-matchups",
-    [
-      { label: "Flying", key: "unitType" },
-      { label: "Killed", key: "targetType" },
-      { label: "Count", key: "kills", num: true },
-    ],
-    sortRows(p.matchups || [], "p-matchups"),
-    (m) => `<tr>
-      <td class="name">${ref("unit", m.unitType)}</td>
-      <td>${ref("unit", m.targetType)}</td>
-      <td class="num">${num(m.kills)}</td>
-    </tr>`,
-    drawPlayer
-  );
-
-  render(
-    "p-killedby",
-    [
-      { label: "Flying", key: "unitType" },
-      { label: "Killed by", key: "targetType" },
-      { label: "Count", key: "kills", num: true },
-    ],
-    sortRows(p.killedBy || [], "p-killedby"),
-    (m) => `<tr>
-      <td class="name">${ref("unit", m.unitType)}</td>
-      <td>${ref("unit", m.targetType)}</td>
-      <td class="num">${num(m.kills)}</td>
-    </tr>`,
-    drawPlayer
-  );
-
-  render(
     "p-grades",
     [
       { label: "Time", key: "missionTime", num: true },
@@ -698,20 +834,22 @@ function drawPlayer() {
 }
 
 // The id is in the path, since this is a page rather than a view: /player/2.
-function playerIDFromPath() {
-  const m = location.pathname.match(/^\/player\/([^/]+)\/?$/);
-  return m ? decodeURIComponent(m[1]) : null;
+function playerFromPath() {
+  const m = location.pathname.match(/^\/player\/([^/]+)(?:\/([^/]+))?\/?$/);
+  if (!m) return null;
+  return { id: decodeURIComponent(m[1]), unitType: m[2] ? decodeURIComponent(m[2]) : null };
 }
 
 async function loadPlayer() {
-  const id = playerIDFromPath();
-  if (!id) return;
+  const route = playerFromPath();
+  if (!route) return;
+  const { id, unitType } = route;
 
   try {
     // The reference cards need display names, which the dashboard query
     // normally fills in. This page has to ask for them itself.
     const [profile, lookup] = await Promise.all([
-      gqlVars(PLAYER_QUERY, { id }),
+      gqlVars(PLAYER_QUERY, { id, unitType }),
       gql(`{ units { type displayName } weapons { type displayName } }`),
     ]);
 
@@ -733,7 +871,11 @@ async function loadPlayer() {
     }
 
     state.player = profile.playerProfile;
-    document.title = `${playerLabel(state.player.playerName)} — Overlord`;
+    // The airframe belongs in the title too: a narrowed page is its own page,
+    // and a tab or bookmark reading only the pilot's name would be a different
+    // URL wearing the same label.
+    const who = playerLabel(state.player.playerName);
+    document.title = unitType ? `${who} · ${unitName(unitType)} — Overlord` : `${who} — Overlord`;
     drawPlayer();
   } catch (err) {
     el("player-name").textContent = "Could not load this pilot";

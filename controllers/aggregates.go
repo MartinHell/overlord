@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"fmt"
+
 	"github.com/MartinHell/overlord/initializers"
 	"github.com/MartinHell/overlord/logs"
 	"github.com/MartinHell/overlord/models"
@@ -298,7 +300,9 @@ func GetLandingGrades(limit int) ([]*models.LandingGrade, error) {
 // dimension, multiplying rows, or a window function, which is not portable
 // between SQLite and Postgres. Each is a grouped aggregate over an indexed
 // player_id, not a scan into Go.
-func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
+// unitType narrows the whole profile to one airframe when non-empty, which is
+// what the per-model page asks for.
+func GetPlayerProfile(playerID uint, unitType string) (*models.PlayerProfileView, error) {
 	var player models.Player
 	if err := player.GetPlayerByPlayerID(playerID); err != nil {
 		logs.Sugar.Errorf("Failed to load player %d: %v", playerID, err)
@@ -310,9 +314,45 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		PlayerID:   playerID,
 		PlayerName: name,
 		IsAI:       models.IsAIPlayerName(name),
+		UnitType:   unitType,
 	}
 
 	db := initializers.DB
+
+	// Narrowing to an airframe means joining the initiator's unit and
+	// constraining it. Queries that already join units add the constraint
+	// instead, so this is only for the ones that do not.
+	onUnit := func(q *gorm.DB) *gorm.DB {
+		if unitType == "" {
+			return q
+		}
+		return q.Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+			Where("units.type = ?", unitType)
+	}
+
+	// Everything flown, whatever the current narrowing -- this drives the
+	// filter, so it must not filter itself out of existence.
+	//
+	// Ordered by how much the pilot actually used each one, not alphabetically:
+	// the client shows the first handful as chips, so the ordering decides
+	// which airframes are one click away.
+	var flownRows []struct {
+		Type  string
+		Total int
+	}
+	if err := db.Model(&models.Event{}).
+		Select("units.type AS type, COUNT(*) AS total").
+		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Where("events.player_id = ? AND events.initiator_kind = ?", playerID, models.ObjectKindUnit).
+		Group("units.type").
+		Order("total DESC, units.type").
+		Scan(&flownRows).Error; err != nil {
+		logs.Sugar.Errorf("Failed to list airframes for player %d: %v", playerID, err)
+		return nil, err
+	}
+	for _, f := range flownRows {
+		view.Flown = append(view.Flown, f.Type)
+	}
 
 	// Totals. Hits and kills exclude scenery for the same reason as
 	// GetWeaponEffectiveness: DCS reports a blast catching a tree as a hit, and
@@ -322,7 +362,7 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		Shots, Hits, Kills, Teamkills                 int
 		FirstSeen, LastSeen                           float64
 	}
-	err := db.Model(&models.Event{}).
+	err := onUnit(db.Model(&models.Event{})).
 		Select(`SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
 			SUM(CASE WHEN events.event IN ('land','runway_touch') THEN 1 ELSE 0 END) AS landings,
 			SUM(CASE WHEN events.event = 'crash' THEN 1 ELSE 0 END) AS crashes,
@@ -356,7 +396,7 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		Coalition string
 		Total     int
 	}
-	if err := db.Model(&models.Event{}).
+	if err := onUnit(db.Model(&models.Event{})).
 		Select("events.coalition AS coalition, COUNT(*) AS total").
 		Where("events.player_id = ? AND events.coalition <> '' AND events.coalition <> 'unknown'", playerID).
 		Group("events.coalition").
@@ -385,6 +425,7 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
 		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Where("events.player_id = ? AND events.initiator_kind = ?", playerID, models.ObjectKindUnit).
+		Scopes(whereUnitType(unitType)).
 		Group("units.type").
 		Order("sorties DESC, kills DESC, units.type").
 		Scan(&aircraft).Error; err != nil {
@@ -397,7 +438,7 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 
 	// Per weapon.
 	var weapons []models.WeaponEffectiveness
-	if err := db.Model(&models.Event{}).
+	if err := onUnit(db.Model(&models.Event{})).
 		Select(`weapons.type AS weapon_type,
 			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
 			SUM(CASE WHEN events.event = 'hit'
@@ -426,6 +467,7 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		Joins("JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
 		Where("events.event = ? AND events.player_id = ? AND targets.kind <> ?",
 			"kill", playerID, models.ObjectKindScenery).
+		Scopes(whereUnitType(unitType)).
 		Group("units.type, tunits.type").
 		Order("kills DESC, units.type, tunits.type").
 		Scan(&matchups).Error; err != nil {
@@ -444,18 +486,26 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 	// initiator on that player's own events. Matching on it is therefore exact
 	// within a mission; across missions a reused slot name could in principle
 	// be credited to the wrong player.
-	playerUnits := db.Model(&models.Event{}).
+	playerUnits := onUnit(db.Model(&models.Event{})).
 		Select("DISTINCT events.initiator_name").
 		Where("events.player_id = ? AND events.initiator_name <> ?", playerID, "")
 
 	var killedBy []models.Matchup
-	if err := db.Model(&models.Event{}).
+	killedByQuery := db.Model(&models.Event{}).
 		Select("tunits.type AS unit_type, units.type AS target_type, COUNT(*) AS kills").
 		Joins("JOIN targets ON targets.target_id = events.target_id").
 		Joins("JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
 		Where("events.event = ? AND events.player_id <> ? AND events.target_name IN (?)",
-			"kill", playerID, playerUnits).
+			"kill", playerID, playerUnits)
+
+	// Here the player's airframe is the victim, so the narrowing applies to the
+	// target side rather than the initiator.
+	if unitType != "" {
+		killedByQuery = killedByQuery.Where("tunits.type = ?", unitType)
+	}
+
+	if err := killedByQuery.
 		Group("tunits.type, units.type").
 		Order("kills DESC, tunits.type, units.type").
 		Scan(&killedBy).Error; err != nil {
@@ -478,6 +528,7 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		Joins("JOIN players ON players.player_id = events.player_id").
 		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
 		Where("events.event = ? AND events.player_id = ?", "landing_quality_mark", playerID).
+		Scopes(whereUnitType(unitType)).
 		Order("events.id DESC").
 		Limit(defaultPageSize).
 		Scan(&grades).Error; err != nil {
@@ -488,7 +539,68 @@ func GetPlayerProfile(playerID uint) (*models.PlayerProfileView, error) {
 		view.LandingGrades = append(view.LandingGrades, &grades[i])
 	}
 
+	// Activity over the mission clock. Bucketed in the database rather than by
+	// returning every event and binning them in the browser.
+	//
+	// The bucket is sized from the span so the shape stays readable whether the
+	// mission ran twenty minutes or six hours, and is reported alongside the
+	// data so the client does not have to guess what it is drawing.
+	bucket := 60
+	if span := totals.LastSeen - totals.FirstSeen; span > 0 {
+		for span/float64(bucket) > 60 {
+			bucket *= 2
+		}
+	}
+	view.BucketSeconds = bucket
+
+	var buckets []struct {
+		Bucket                        int
+		Sorties, Kills, Losses, Shots int
+	}
+	// bucket is an int computed just above, never user input, so interpolating
+	// it into the expression cannot carry anything through.
+	bucketExpr := fmt.Sprintf("CAST(events.mission_time / %d AS INTEGER)", bucket)
+	// Scenery is excluded here exactly as it is in the totals. Counted plainly,
+	// the chart summed 270 kills against a headline of 251 on the same page,
+	// which reads as one of the two being wrong.
+	if err := onUnit(db.Model(&models.Event{})).
+		Select(bucketExpr+` AS bucket,
+			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
+			SUM(CASE WHEN events.event = 'kill'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event IN ('crash','dead','unit_lost','pilot_dead') THEN 1 ELSE 0 END) AS losses,
+			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots`).
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.player_id = ? AND events.mission_time > 0", playerID).
+		Group(bucketExpr).
+		Order(bucketExpr).
+		Scan(&buckets).Error; err != nil {
+		logs.Sugar.Errorf("Failed to build timeline for player %d: %v", playerID, err)
+		return nil, err
+	}
+
+	for _, b := range buckets {
+		view.Timeline = append(view.Timeline, &models.TimelineBucket{
+			T:       float64(b.Bucket * bucket),
+			Sorties: b.Sorties,
+			Kills:   b.Kills,
+			Losses:  b.Losses,
+			Shots:   b.Shots,
+		})
+	}
+
 	return view, nil
+}
+
+// whereUnitType constrains a query that already joins units, so callers do not
+// have to repeat the empty check.
+func whereUnitType(unitType string) func(*gorm.DB) *gorm.DB {
+	return func(q *gorm.DB) *gorm.DB {
+		if unitType == "" {
+			return q
+		}
+		return q.Where("units.type = ?", unitType)
+	}
 }
 
 // GetUnitProfile assembles the reference card for one unit type: curated

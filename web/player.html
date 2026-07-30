@@ -40,13 +40,20 @@
       <h1 id="player-name">—</h1>
       <div id="player-tags" class="tags"></div>
     </div>
+    <div class="chips filter" id="player-filter" role="group" aria-label="Narrow to one airframe"></div>
     <dl class="headline" id="player-headline"></dl>
     <p class="note" id="player-note"></p>
   </section>
 
+  <section class="card-panel">
+    <div class="phead"><h2>Across the mission</h2></div>
+    <div id="player-timeline"></div>
+  </section>
+
   <div class="split">
-    <section class="card-panel">
+    <section class="card-panel" id="p-aircraft-panel">
       <div class="phead"><h2>Aircraft flown</h2></div>
+      <p class="note">Pick one to narrow the whole page to it.</p>
       <div class="tw"><table id="p-aircraft" class="grid"></table></div>
     </section>
 
@@ -59,8 +66,8 @@
   <div class="split">
     <section class="card-panel">
       <div class="phead"><h2>Kills by matchup</h2></div>
-      <p class="note">What this pilot shot down, and what they were flying at the time.</p>
-      <div class="tw tw-tall"><table id="p-matchups" class="grid"></table></div>
+      <p class="note">Rows are what they flew, columns what they met. Darker is more.</p>
+      <div id="p-matchups-wrap"></div>
     </section>
 
     <section class="card-panel">
@@ -69,7 +76,7 @@
         The other side of the same ledger. Matched by DCS unit name, since a kill event names the
         victim's unit rather than its owner — exact within a mission.
       </p>
-      <div class="tw tw-tall"><table id="p-killedby" class="grid"></table></div>
+      <div id="p-killedby-wrap"></div>
     </section>
   </div>
 
