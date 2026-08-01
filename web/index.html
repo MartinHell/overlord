@@ -95,6 +95,14 @@
       the time the event fired. The position is real; only the victim is anonymous.
     </p>
     <div id="missionmap"></div>
+    <!-- Replay. Every dot already carries a mission clock, so playing the
+         mission back is a filter rather than a new data source. -->
+    <div class="scrub" id="missionmap-scrub" hidden>
+      <button type="button" class="scrub-play" aria-label="Play the mission back">▶</button>
+      <input type="range" class="scrub-range" min="0" max="100" value="100" step="1"
+             aria-label="Mission time">
+      <span class="scrub-clock" aria-live="off">--:--:--</span>
+    </div>
   </section>
 
   <section class="card-panel" id="p-weapons">

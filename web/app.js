@@ -1038,6 +1038,8 @@ function collateralPanel(c, scope) {
 let killMap = null;
 let killLayer = null;
 let killMapFitted = false;
+// Held so the replay can re-plot without another fetch.
+let killPts = [];
 
 // Most kills name nothing: DCS fires the event after it has already
 // deallocated the victim, so about two thirds of them arrive with coordinates
@@ -1046,6 +1048,109 @@ let killMapFitted = false;
 // tell a confirmed victim from an anonymous one.
 const targetLabel = (t) => (t ? unitName(t) : "unknown target");
 const targetOpacity = (t) => (t ? 0.6 : 0.28);
+
+// ---- map replay -----------------------------------------------------------
+
+// Both kill maps can play the mission back. Every dot already carries a mission
+// clock, so this is a filter over points that are on the page already: no track
+// sampling, no new table, no StreamUnits.
+//
+// Offered in mission scope only. Across all time the clock restarts with every
+// mission, so one slider would interleave forty of them into nonsense.
+const SCRUB_STEPS = 140; // frames in a full playthrough
+const SCRUB_FRAME_MS = 110; // ~15s end to end, whatever the mission's length
+
+const scrubs = {};
+
+function scrubFor(id, replot) {
+  let s = scrubs[id];
+  if (!s) {
+    s = scrubs[id] = { max: 0, at: Infinity, playing: false, timer: null, replot };
+    wireScrub(id, s);
+  }
+  s.replot = replot;
+  return s;
+}
+
+function wireScrub(id, s) {
+  const wrap = el(id + "-scrub");
+  if (!wrap) return;
+
+  wrap.querySelector(".scrub-range").addEventListener("input", (e) => {
+    stopScrub(s);
+    s.at = Number(e.target.value);
+    paintScrub(id, s);
+    s.replot();
+  });
+  wrap.querySelector(".scrub-play").addEventListener("click", () => toggleScrub(id, s));
+}
+
+function toggleScrub(id, s) {
+  if (s.playing) {
+    stopScrub(s);
+    paintScrub(id, s);
+    return;
+  }
+  // Pressing play at the end restarts, rather than doing nothing.
+  if (s.at >= s.max) s.at = 0;
+  s.playing = true;
+  paintScrub(id, s);
+  s.replot();
+
+  s.timer = setInterval(() => {
+    s.at = Math.min(s.max, s.at + s.max / SCRUB_STEPS);
+    if (s.at >= s.max) stopScrub(s);
+    paintScrub(id, s);
+    s.replot();
+  }, SCRUB_FRAME_MS);
+}
+
+function stopScrub(s) {
+  s.playing = false;
+  if (s.timer) clearInterval(s.timer);
+  s.timer = null;
+}
+
+function paintScrub(id, s) {
+  const wrap = el(id + "-scrub");
+  if (!wrap) return;
+
+  const range = wrap.querySelector(".scrub-range");
+  range.max = Math.max(1, Math.round(s.max));
+  range.value = Math.round(Math.min(s.at, s.max));
+
+  const play = wrap.querySelector(".scrub-play");
+  play.textContent = s.playing ? "⏸" : "▶";
+  play.setAttribute("aria-label", s.playing ? "Pause the replay" : "Play the mission back");
+  wrap.querySelector(".scrub-clock").textContent = clock(Math.min(s.at, s.max));
+}
+
+// Fit the scrubber to the points in hand and report the current cutoff.
+//
+// A live mission keeps growing. Someone parked at the end should stay at the
+// end as new kills arrive; someone who scrubbed back to watch an engagement
+// should not be yanked forward every fifteen seconds.
+function scrubCutoff(id, points, replot) {
+  const wrap = el(id + "-scrub");
+  const perMission = state.scope === "mission";
+  const worth = perMission && points.length > 1;
+  if (wrap) wrap.hidden = !worth;
+
+  const s = scrubFor(id, replot);
+  if (!worth) {
+    stopScrub(s);
+    s.at = Infinity;
+    return Infinity;
+  }
+
+  const max = Math.max(...points.map((p) => p.missionTime || 0));
+  const wasAtEnd = s.at >= s.max;
+  s.max = max;
+  if (wasAtEnd) s.at = max;
+  paintScrub(id, s);
+
+  return s.at;
+}
 
 function drawKillMap(points) {
   const host = el("killmap");
@@ -1067,16 +1172,34 @@ function drawKillMap(points) {
     killLayer = L.layerGroup().addTo(killMap);
   }
 
-  killLayer.clearLayers();
-
-  const pts = points || [];
-  if (!pts.length) {
+  killPts = points || [];
+  if (!killPts.length) {
+    killLayer.clearLayers();
     host.classList.add("map-empty");
+    const wrap = el("killmap-scrub");
+    if (wrap) wrap.hidden = true;
     return;
   }
   host.classList.remove("map-empty");
 
-  for (const p of pts) {
+  scrubCutoff("killmap", killPts, plotKillPoints);
+  plotKillPoints();
+
+  // Framed on every point, not the visible ones, so the view holds still
+  // while the replay runs.
+  if (!killMapFitted) {
+    killMap.fitBounds(L.latLngBounds(killPts.map((p) => [p.lat, p.lon])).pad(0.2));
+    killMapFitted = true;
+  }
+}
+
+function plotKillPoints() {
+  if (!killLayer) return;
+  killLayer.clearLayers();
+
+  const cut = scrubs.killmap ? scrubs.killmap.at : Infinity;
+  for (const p of killPts) {
+    if ((p.missionTime || 0) > cut) continue;
     L.circleMarker([p.lat, p.lon], {
       radius: 5,
       weight: 1,
@@ -1089,11 +1212,6 @@ function drawKillMap(points) {
       )
       .addTo(killLayer);
   }
-
-  if (!killMapFitted) {
-    killMap.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.2));
-    killMapFitted = true;
-  }
 }
 
 // The mission map: both sides' kills, coloured by coalition. Same rules as
@@ -1101,6 +1219,7 @@ function drawKillMap(points) {
 let missionMap = null;
 let missionLayer = null;
 let missionMapFitted = false;
+let missionPts = [];
 
 const SIDE_FILL = { blue: "#2563c9", red: "#c0382e" };
 
@@ -1124,16 +1243,32 @@ function drawMissionMap(points) {
     missionLayer = L.layerGroup().addTo(missionMap);
   }
 
-  missionLayer.clearLayers();
-
-  const pts = points || [];
-  if (!pts.length) {
+  missionPts = points || [];
+  if (!missionPts.length) {
+    missionLayer.clearLayers();
     host.classList.add("map-empty");
+    const wrap = el("missionmap-scrub");
+    if (wrap) wrap.hidden = true;
     return;
   }
   host.classList.remove("map-empty");
 
-  for (const p of pts) {
+  scrubCutoff("missionmap", missionPts, plotMissionPoints);
+  plotMissionPoints();
+
+  if (!missionMapFitted) {
+    missionMap.fitBounds(L.latLngBounds(missionPts.map((p) => [p.lat, p.lon])).pad(0.2));
+    missionMapFitted = true;
+  }
+}
+
+function plotMissionPoints() {
+  if (!missionLayer) return;
+  missionLayer.clearLayers();
+
+  const cut = scrubs.missionmap ? scrubs.missionmap.at : Infinity;
+  for (const p of missionPts) {
+    if ((p.missionTime || 0) > cut) continue;
     L.circleMarker([p.lat, p.lon], {
       radius: 5,
       weight: 1,
@@ -1146,11 +1281,6 @@ function drawMissionMap(points) {
           `${esc(targetLabel(p.targetType))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
       )
       .addTo(missionLayer);
-  }
-
-  if (!missionMapFitted) {
-    missionMap.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.2));
-    missionMapFitted = true;
   }
 }
 
@@ -1770,6 +1900,12 @@ function schedule() {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     clearInterval(timer);
+    // A replay running in a tab nobody is looking at is the same waste, and
+    // it would be most of the way through by the time they came back.
+    for (const id of Object.keys(scrubs)) {
+      stopScrub(scrubs[id]);
+      paintScrub(id, scrubs[id]);
+    }
   } else if (el("live").checked) {
     tick();
     schedule();
