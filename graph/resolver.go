@@ -295,6 +295,11 @@ func (r *sceneryCountResolver) DisplayName(ctx context.Context, obj *models.Scen
 	return models.SceneryName(obj.Type), nil
 }
 
+// MissionID is the resolver for the missionID field.
+func (r *sortieResolver) MissionID(ctx context.Context, obj *models.Sortie) (string, error) {
+	return fmt.Sprintf("%v", obj.MissionID), nil
+}
+
 // TargetID is the resolver for the targetID field.
 func (r *targetResolver) TargetID(ctx context.Context, obj *models.Target) (string, error) {
 	return fmt.Sprintf("%v", obj.TargetID), nil
@@ -383,6 +388,9 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 // SceneryCount returns generated.SceneryCountResolver implementation.
 func (r *Resolver) SceneryCount() generated.SceneryCountResolver { return &sceneryCountResolver{r} }
 
+// Sortie returns generated.SortieResolver implementation.
+func (r *Resolver) Sortie() generated.SortieResolver { return &sortieResolver{r} }
+
 // Target returns generated.TargetResolver implementation.
 func (r *Resolver) Target() generated.TargetResolver { return &targetResolver{r} }
 
@@ -410,6 +418,7 @@ type (
 	playerShotBreakdownResolver struct{ *Resolver }
 	queryResolver               struct{ *Resolver }
 	sceneryCountResolver        struct{ *Resolver }
+	sortieResolver              struct{ *Resolver }
 	targetResolver              struct{ *Resolver }
 	unitResolver                struct{ *Resolver }
 	unitWeaponBreakdownResolver struct{ *Resolver }
