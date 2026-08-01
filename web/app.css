@@ -1149,3 +1149,37 @@ tr.first-place .name a { color: var(--gold); }
 .opp-name { flex: 1 1 8rem; font-weight: 600; }
 .opp-stat { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .opp-stat b { color: var(--text); font-weight: 600; }
+
+/* ---- map replay scrubber ---- */
+.scrub {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.scrub[hidden] { display: none; }
+.scrub-play {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+.scrub-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.scrub-clock {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}

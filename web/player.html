@@ -88,6 +88,13 @@
       the time the event fired. The position is real; only the victim is anonymous.
     </p>
     <div id="killmap"></div>
+    <!-- Replay; see index.html. -->
+    <div class="scrub" id="killmap-scrub" hidden>
+      <button type="button" class="scrub-play" aria-label="Play the mission back">▶</button>
+      <input type="range" class="scrub-range" min="0" max="100" value="100" step="1"
+             aria-label="Mission time">
+      <span class="scrub-clock" aria-live="off">--:--:--</span>
+    </div>
   </section>
 
   <div class="split">
