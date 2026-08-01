@@ -996,6 +996,14 @@ let killMap = null;
 let killLayer = null;
 let killMapFitted = false;
 
+// Most kills name nothing: DCS fires the event after it has already
+// deallocated the victim, so about two thirds of them arrive with coordinates
+// and no target object. Those dots are real and belong on the map. They say so
+// rather than rendering a blank, and sit at a lower opacity so a glance can
+// tell a confirmed victim from an anonymous one.
+const targetLabel = (t) => (t ? unitName(t) : "unknown target");
+const targetOpacity = (t) => (t ? 0.6 : 0.28);
+
 function drawKillMap(points) {
   const host = el("killmap");
   if (!host) return;
@@ -1031,10 +1039,10 @@ function drawKillMap(points) {
       weight: 1,
       color: "#ffffff",
       fillColor: "#c0382e",
-      fillOpacity: 0.55,
+      fillOpacity: targetOpacity(p.targetType),
     })
       .bindTooltip(
-        `${esc(unitName(p.targetType || ""))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
+        `${esc(targetLabel(p.targetType))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
       )
       .addTo(killLayer);
   }
@@ -1088,11 +1096,11 @@ function drawMissionMap(points) {
       weight: 1,
       color: "#ffffff",
       fillColor: SIDE_FILL[p.coalition] || "#7a8494",
-      fillOpacity: 0.6,
+      fillOpacity: targetOpacity(p.targetType),
     })
       .bindTooltip(
         `${esc(playerLabel(p.playerName))}${p.unitType ? " · " + esc(unitName(p.unitType)) : ""} → ` +
-          `${esc(unitName(p.targetType || ""))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
+          `${esc(targetLabel(p.targetType))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
       )
       .addTo(missionLayer);
   }
