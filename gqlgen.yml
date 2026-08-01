@@ -67,6 +67,12 @@ models:
   Sortie:
     model:
       - github.com/MartinHell/overlord/models.Sortie
+  Rivalry:
+    model:
+      - github.com/MartinHell/overlord/models.Rivalry
+  Title:
+    model:
+      - github.com/MartinHell/overlord/models.Title
   Favourite:
     model:
       - github.com/MartinHell/overlord/models.Favourite
