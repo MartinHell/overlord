@@ -94,6 +94,8 @@ const state = {
   // Which state the mission-task panel is narrowed to, and to whose tasks.
   taskState: "all",
   taskPilot: "",
+  // Where each paginated table is. Keyed by table id; absent means page one.
+  page: {},
 };
 
 // The synthetic AI players are stored under a machine-ish name. They are real
@@ -338,12 +340,71 @@ function sortRows(rows, table) {
 // redraw is what a sort click re-runs. It defaults to the dashboard, since the
 // player page renders a different set of tables and must not redraw the one
 // behind it.
+// PAGE_ROWS is how many rows a table shows at once.
+//
+// Long tables used to scroll inside a fixed-height box, which hides how much
+// there is, cannot be linked to, and puts a second scrollbar inside the page's
+// own. A page count says what you have and where you are in it.
+const PAGE_ROWS = 50;
+
+// pageOf returns the slice on show and the numbers to describe it.
+//
+// The index is clamped rather than trusted: a filter can shrink the set under
+// your feet -- narrowing 1,414 tasks to 3 while you are on page 12 -- and an
+// out-of-range page renders an empty table with no hint of why.
+function pageOf(table, rows) {
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_ROWS));
+  const at = Math.min(Math.max(0, state.page[table] || 0), pages - 1);
+  state.page[table] = at;
+
+  const from = at * PAGE_ROWS;
+  return { rows: rows.slice(from, from + PAGE_ROWS), at, pages, from, total: rows.length };
+}
+
+// The pager. Rendered after the table rather than inside it, since a table's
+// own markup has nowhere legitimate for controls.
+function pager(table, p, redraw) {
+  const host = el(`${table}-pager`);
+  if (!host) return;
+
+  if (p.pages <= 1) {
+    host.innerHTML = "";
+    return;
+  }
+
+  const to = p.from + p.rows.length;
+  host.innerHTML =
+    `<button type="button" class="pg-prev"${p.at === 0 ? " disabled" : ""} aria-label="Previous page">←</button>` +
+    `<span class="pg-at">${num(p.from + 1)}–${num(to)} of ${num(p.total)}</span>` +
+    `<button type="button" class="pg-next"${p.at >= p.pages - 1 ? " disabled" : ""} aria-label="Next page">→</button>`;
+
+  const step = (by) => {
+    state.page[table] = p.at + by;
+    redraw();
+    // The table is now showing different rows some way up the page; without
+    // this you page forward and stay looking at the bottom of the last one.
+    el(table)?.scrollIntoView({ block: "nearest" });
+  };
+  host.querySelector(".pg-prev")?.addEventListener("click", () => step(-1));
+  host.querySelector(".pg-next")?.addEventListener("click", () => step(1));
+}
+
 function render(table, columns, rows, renderRow, redraw = draw) {
   const node = el(table);
 
   if (!rows.length) {
     node.innerHTML = `<tbody><tr><td class="none">Nothing matches.</td></tr></tbody>`;
+    pager(table, { pages: 1 }, redraw);
     return;
+  }
+
+  // Paginate only where the page asked for it, by putting a pager element in
+  // the markup. A six-row table needs no controls.
+  let shownRows = rows;
+  if (el(`${table}-pager`)) {
+    const p = pageOf(table, rows);
+    shownRows = p.rows;
+    pager(table, p, redraw);
   }
 
   // The control is a real <button> inside the <th>, not a click handler on the
@@ -368,7 +429,7 @@ function render(table, columns, rows, renderRow, redraw = draw) {
   const held =
     node.contains(document.activeElement) && document.activeElement.dataset.sort;
 
-  node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${rows.map((r, i) => renderRow(r, i)).join("")}</tbody>`;
+  node.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${shownRows.map((r, i) => renderRow(r, i)).join("")}</tbody>`;
 
   if (held) node.querySelector(`button[data-sort="${CSS.escape(held)}"]`)?.focus();
 
@@ -378,6 +439,9 @@ function render(table, columns, rows, renderRow, redraw = draw) {
       const s = state.sort[table];
       s.dir = s.key === key ? -s.dir : -1;
       s.key = key;
+      // Re-sorting reorders the whole set, so page 12 of the old order means
+      // nothing in the new one.
+      state.page[table] = 0;
       redraw();
     });
   });
@@ -1226,11 +1290,6 @@ function taskState(state) {
   return "active";
 }
 
-// maxTasks caps what reaches the DOM. The current mission exports 1,414 tasks;
-// rendering all of them makes a wall nobody reads and a page that janks on
-// every poll. The count line says what was left out.
-const maxTasks = 200;
-
 // Mission tasks, when the mission exports any. The panel stays hidden rather
 // than showing an empty table on servers whose missions say nothing.
 function drawTasks(tableID, panelID, tasks, redraw = draw) {
@@ -1274,15 +1333,11 @@ function drawTasks(tableID, panelID, tasks, redraw = draw) {
       `<b>${num(tally.active)}</b> still running · <b>${num(earned)}</b> points banked`;
   }
 
-  const shown = rows.slice(0, maxTasks);
+  // The pager says where you are within the filtered set; this says how much
+  // the filter itself took out.
   const countEl = el("task-count");
   if (countEl) {
-    countEl.textContent =
-      rows.length > shown.length
-        ? `showing ${shown.length} of ${num(rows.length)}`
-        : rows.length === tally.all
-          ? ""
-          : `${num(rows.length)} of ${num(tally.all)}`;
+    countEl.textContent = rows.length === tally.all ? "" : `${num(rows.length)} of ${num(tally.all)} match`;
   }
 
   render(
@@ -1293,7 +1348,7 @@ function drawTasks(tableID, panelID, tasks, redraw = draw) {
       { label: "Pilot", key: "playerName" },
       { label: "Points", key: "points", num: true },
     ],
-    sortRows(shown, tableID),
+    sortRows(rows, tableID),
     (t) => {
       const s = taskState(t.state);
       return `<tr>
@@ -2293,6 +2348,12 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// Narrowing what a table shows invalidates where you were in it: page twelve
+// of everything is not page twelve of the four rows that matched.
+function resetPages() {
+  state.page = {};
+}
+
 function chips(container, attr, onPick) {
   // Not every control exists on every page: a mission recap is one finished
   // run, so it has no scope toggle to wire.
@@ -2302,6 +2363,7 @@ function chips(container, attr, onPick) {
     if (!btn) return;
     el(container).querySelectorAll("button").forEach((b) => b.classList.toggle("on", b === btn));
     onPick(btn.dataset[attr]);
+    resetPages();
     draw();
   });
 }
@@ -2333,6 +2395,7 @@ if (PAGE === "dashboard" || PAGE === "mission" || PAGE === "weapons" || PAGE ===
   if (el("task-pilot")) {
     el("task-pilot").addEventListener("change", (e) => {
       state.taskPilot = e.target.value;
+      resetPages();
       draw();
     });
   }
@@ -2349,6 +2412,7 @@ if (PAGE === "dashboard" || PAGE === "mission" || PAGE === "weapons" || PAGE ===
 
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
+    resetPages();
     draw();
   });
 }
@@ -2356,6 +2420,7 @@ if (PAGE === "dashboard" || PAGE === "mission" || PAGE === "weapons" || PAGE ===
 if (PAGE === "player") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
+    resetPages();
     drawPlayer();
   });
 }
@@ -2363,11 +2428,13 @@ if (PAGE === "player") {
 if (PAGE === "missions") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
+    resetPages();
     draw();
   });
 
   el("pilot-filter").addEventListener("change", (e) => {
     state.pilotFilter = e.target.value;
+    resetPages();
     try {
       localStorage.setItem("overlord-pilot", state.pilotFilter);
     } catch {
