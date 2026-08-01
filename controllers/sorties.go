@@ -42,6 +42,24 @@ const (
 // mergeWindow generously covers the observed gaps of 11s and 31s.
 const mergeWindow = 90.0
 
+// killGrace keeps a flight open to its own last shots. Missiles in the air when
+// an aircraft dies still score, and DCS timestamps those kills a fraction after
+// the death event, so they would otherwise fall into the gap between flights.
+const killGrace = 10.0
+
+// sameAirframe decides whether a kill belongs to the flight in hand.
+//
+// The window a kill lands in is not enough on its own. DCS names an airframe on
+// the kill event too, and the two genuinely disagree in the recorded data: one
+// kill is stamped F-15ESE seventy seconds before that pilot took off in an
+// F-15ESE, while they were still in a Viggen. Requiring both to agree keeps the
+// flight log saying the same thing as the aircraft table and the titles, which
+// count by the airframe DCS named. A kill neither can place is left uncounted
+// rather than pinned on the wrong aeroplane.
+func sameAirframe(killed, flown string) bool {
+	return killed == "" || flown == "" || killed == flown
+}
+
 func sortieFamily(event string) string {
 	switch event {
 	case "takeoff", "runway_takeoff":
@@ -125,6 +143,10 @@ func GetSorties(playerID uint, missionID *uint, unitType string) ([]*models.Sort
 
 	var out []*models.Sortie
 	var open *models.Sortie
+	// The flight that just ended, kept briefly so its last shots can still
+	// land against it. See killGrace.
+	var justClosed *models.Sortie
+	justClosedAt := 0.0
 
 	// close finishes the flight in hand. Called for every terminal event and
 	// again when a fresh takeoff arrives with one still open, which is what a
@@ -142,6 +164,7 @@ func GetSorties(playerID uint, missionID *uint, unitType string) ([]*models.Sort
 			}
 		}
 		out = append(out, open)
+		justClosed, justClosedAt = open, at
 		open = nil
 	}
 
@@ -170,8 +193,12 @@ func GetSorties(playerID uint, missionID *uint, unitType string) ([]*models.Sort
 		if r.Event == "kill" {
 			// Kills before the first takeoff belong to no flight -- a ground
 			// unit, or a sortie whose takeoff went unrecorded.
-			if open != nil {
-				open.Kills++
+			s := open
+			if s == nil && justClosed != nil && r.MissionTime-justClosedAt <= killGrace {
+				s = justClosed
+			}
+			if s != nil && sameAirframe(r.UnitType, s.UnitType) {
+				s.Kills++
 			}
 			continue
 		}
