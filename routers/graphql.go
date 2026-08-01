@@ -104,6 +104,7 @@ func GraphQLHandler() {
 	// bookmarked and opened in a tab, rather than a panel someone has to scroll
 	// past on the way to the one they wanted.
 	mux.HandleFunc("/missions", servePage("missions.html"))
+	mux.HandleFunc("/airframes", servePage("airframes.html"))
 	mux.HandleFunc("/weapons", servePage("weapons.html"))
 	mux.HandleFunc("/landings", servePage("landings.html"))
 	mux.HandleFunc("/log", servePage("log.html"))

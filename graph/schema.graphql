@@ -351,6 +351,35 @@ type PlayerAircraftStats {
     killsPerShot: Float!
 }
 
+"""
+One aircraft or vehicle type's whole record, summed across every pilot.
+
+The same shape as PlayerAircraftStats, but for the page that puts every type
+beside every other rather than one pilot's use of it.
+"""
+type AirframeStats {
+    unitType: String!
+    sorties: Int!
+    landings: Int!
+    shots: Int!
+    "Excludes scenery."
+    hits: Int!
+    "Excludes scenery and collisions."
+    kills: Int!
+    "Hits and kills where this airframe was flown into something. See WeaponEffectiveness.collisions."
+    collisions: Int!
+    "Anything that ended one of these while it was the initiator: crash, death, ejection."
+    losses: Int!
+    ejections: Int!
+    "How often one was destroyed by somebody else, which the counts above cannot see."
+    timesKilled: Int!
+    "Kills over timesKilled. Falls back to the kill count when none were lost."
+    killDeathRatio: Float!
+    "A ratio, not a percentage — see WeaponEffectiveness.hitsPerShot."
+    hitsPerShot: Float!
+    killsPerShot: Float!
+}
+
 "A kill tally for one airframe against one other type."
 type Matchup {
     "The airframe that did the killing."
@@ -673,6 +702,10 @@ type Query {
     missions: [Mission!]!
     "Every recorded run with the detail the index page shows. Heavier than missions; ask for it only there."
     missionIndex: [MissionEntry!]!
+    "Every airframe and vehicle type that has flown, side by side."
+    airframes(missionID: ID): [AirframeStats!]!
+    "The kill matrix between types, across every pilot: which airframe beats which."
+    airframeMatchups(missionID: ID): [Matchup!]!
     "Kill tally per coalition, covering both sides. Omit missionID for all of recorded history."
     killsByCoalition(missionID: ID): [CoalitionKills!]!
     "Shots, hits, kills, accuracy and Pk per weapon type."

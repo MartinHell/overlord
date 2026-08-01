@@ -166,6 +166,16 @@ func (r *queryResolver) MissionIndex(ctx context.Context) ([]*models.MissionEntr
 	return controllers.GetMissionIndex()
 }
 
+// Airframes is the resolver for the airframes field.
+func (r *queryResolver) Airframes(ctx context.Context, missionID *string) ([]*models.AirframeStats, error) {
+	return controllers.GetAirframes(parseOptionalID(missionID))
+}
+
+// AirframeMatchups is the resolver for the airframeMatchups field.
+func (r *queryResolver) AirframeMatchups(ctx context.Context, missionID *string) ([]*models.Matchup, error) {
+	return controllers.GetAirframeMatchups(parseOptionalID(missionID))
+}
+
 // KillsByCoalition returns the kill tally for every coalition at once.
 func (r *queryResolver) KillsByCoalition(ctx context.Context, missionID *string) ([]*models.CoalitionKills, error) {
 	return controllers.GetKillsByCoalition(parseOptionalID(missionID))

@@ -67,6 +67,9 @@ models:
   Sortie:
     model:
       - github.com/MartinHell/overlord/models.Sortie
+  AirframeStats:
+    model:
+      - github.com/MartinHell/overlord/models.AirframeStats
   MissionEntry:
     model:
       - github.com/MartinHell/overlord/models.MissionEntry

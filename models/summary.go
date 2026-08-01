@@ -475,3 +475,49 @@ type WeaponProfileView struct {
 	// Carriers are the airframes seen firing it, busiest first.
 	Carriers []*UnitShotBreakdown
 }
+
+// AirframeStats is one aircraft or vehicle type's whole record, for the page
+// that puts every type beside every other. The same shape as
+// PlayerAircraftStats, but summed across every pilot rather than one.
+type AirframeStats struct {
+	UnitType  string
+	Sorties   int
+	Landings  int
+	Shots     int
+	Hits      int
+	Kills     int
+	// Collisions are hits and kills where this airframe was flown into
+	// something, which DCS reports as the airframe being the weapon. Held out
+	// of Kills for the same reason as on WeaponEffectiveness.
+	Collisions int
+	Losses     int
+	Ejections  int
+	// TimesKilled is how often one of these was destroyed by somebody else,
+	// which the initiator-side counts above cannot see.
+	TimesKilled int
+}
+
+// KillDeathRatio counts a loss as anything that ended the airframe. No losses
+// returns the kill count rather than dividing by zero.
+func (a *AirframeStats) KillDeathRatio() float64 {
+	if a.TimesKilled == 0 {
+		return float64(a.Kills)
+	}
+	return float64(a.Kills) / float64(a.TimesKilled)
+}
+
+// HitsPerShot carries the same caveat as everywhere else: a ratio that
+// legitimately exceeds 1, not a percentage.
+func (a *AirframeStats) HitsPerShot() float64 {
+	if a.Shots == 0 {
+		return 0
+	}
+	return float64(a.Hits) / float64(a.Shots)
+}
+
+func (a *AirframeStats) KillsPerShot() float64 {
+	if a.Shots == 0 {
+		return 0
+	}
+	return float64(a.Kills) / float64(a.Shots)
+}

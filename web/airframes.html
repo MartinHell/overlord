@@ -6,7 +6,7 @@
 <!-- Declared before any CSS arrives so the browser paints the canvas in a
      sane colour from the first frame. app.js narrows it to the chosen theme. -->
 <meta name="color-scheme" content="light dark">
-<title>Event log — Overlord</title>
+<title>Airframes — Overlord</title>
 <link rel="stylesheet" href="/app.css">
 <script>
   // Resolve the theme before first paint. app.css has no prefers-color-scheme
@@ -20,7 +20,7 @@
   })();
 </script>
 </head>
-<body data-page="log">
+<body data-page="airframes">
 
 <!-- The same header on every section. The four-figure readout that used to sit
      here is gone: mission time was already in the hero below it, and the other
@@ -48,7 +48,7 @@
         <button type="button" data-scope="all">All time</button>
       </div>
       <label class="vh" for="q">Filter everything</label>
-      <input type="search" id="q" placeholder="Filter events…" autocomplete="off">
+      <input type="search" id="q" placeholder="Filter airframes…" autocomplete="off">
       <button id="theme" type="button">Theme</button>
       <label class="toggle"><input type="checkbox" id="live" checked> Live</label>
       <span id="link" class="status" role="status">Connecting</span>
@@ -58,26 +58,28 @@
 
 <main>
 
-  <section class="card-panel" id="p-log">
+  <section class="card-panel" id="p-airframes">
     <div class="phead">
-      <h2>Events</h2>
-      <div class="chips" id="log-filter" role="group" aria-label="Filter the event log">
-        <button type="button" data-ev="all" class="on">All</button>
-        <button type="button" data-ev="kill">Kills</button>
-        <button type="button" data-ev="hit">Hits</button>
-        <button type="button" data-ev="shot">Shots</button>
-        <button type="button" data-ev="losses">Losses</button>
-        <button type="button" data-ev="sortie">Sorties</button>
-      </div>
-      <div class="chips" id="log-side" role="group" aria-label="Filter by coalition">
-        <button type="button" data-side="all" class="on">Both sides</button>
-        <button type="button" data-side="blue" class="side-blue">Blue</button>
-        <button type="button" data-side="red" class="side-red">Red</button>
-      </div>
+      <h2>Airframes</h2>
+      <span class="count" id="airframes-count"></span>
     </div>
-    <p class="note">Straight from DCS, newest first. The raw record behind every other number on the site.</p>
-    <div class="tw"><table id="log" class="grid"></table></div>
-    <div class="pager" id="log-pager"></div>
+    <p class="note">
+      Every aircraft and vehicle type that has flown or fired, summed across every pilot. Collisions are
+      counted apart from kills — DCS names the airframe as the weapon when one is flown into something,
+      which otherwise made an airborne radar the third deadliest aircraft on the server.
+      Click a name for its reference card.
+    </p>
+    <div class="tw"><table id="airframes" class="grid"></table></div>
+    <div class="pager" id="airframes-pager"></div>
+  </section>
+
+  <section class="card-panel" id="p-af-matchups">
+    <div class="phead"><h2>Head to head</h2></div>
+    <p class="note">
+      Which airframe actually beats which, across every pilot on the server. Rows are the killer,
+      columns the killed. Darker is more.
+    </p>
+    <div id="af-matchups"></div>
   </section>
 
 </main>
