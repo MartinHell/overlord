@@ -1371,3 +1371,16 @@ a.brand:hover b { text-decoration: underline; }
   font: inherit;
   font-size: 0.8125rem;
 }
+
+/* ---- mission task filters ---- */
+/* A running mission can export well over a thousand tasks. The tally turns
+   that wall into a sentence, and the chips carry their own totals so the
+   filter says what it would show before it is used. */
+.tally {
+  margin: 0 0 0.8rem;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+.tally b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+#task-state button b { font-variant-numeric: tabular-nums; opacity: 0.65; font-weight: 500; }
+#task-state button.on b { opacity: 0.8; }
