@@ -29,20 +29,19 @@
 
 <header class="top">
   <div class="top-in">
-    <div class="brand">
-      <a href="/"><b>Overlord</b></a>
+    <a class="brand" href="/">
+      <b>Overlord</b>
       <span>Mission recap</span>
-    </div>
+    </a>
 
-    <dl class="stats">
-      <div><dt>Mission time</dt><dd id="ro-clock">--:--:--</dd></div>
-      <div><dt>Events</dt><dd id="ro-events">0</dd></div>
-      <div><dt>Sorties</dt><dd id="ro-sorties">0</dd></div>
-      <div><dt>Kills</dt><dd id="ro-kills">0</dd></div>
-    </dl>
+    <nav class="nav" aria-label="Sections">
+      <a href="/" data-nav="dashboard">Debrief</a>
+      <a href="/missions" data-nav="missions">Missions</a>
+      <a href="/weapons" data-nav="weapons">Weapons</a>
+      <a href="/log" data-nav="log">Log</a>
+    </nav>
 
     <div class="controls">
-      <a class="link-a" href="/">← Debrief</a>
       <button id="share" type="button">Copy link</button>
       <label class="vh" for="q">Filter everything</label>
       <input type="search" id="q" placeholder="Search pilots, aircraft, weapons…" autocomplete="off">

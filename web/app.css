@@ -1274,3 +1274,33 @@ tr.first-place .name a { color: var(--gold); }
   font-weight: 600;
   text-transform: uppercase;
 }
+
+/* ---- section navigation ---- */
+/* Sits between the wordmark and the controls, and wraps to its own line before
+   either of them does: on a phone the sections matter more than the search box.
+   Styled as text rather than buttons -- these are links to pages, and making
+   them look like the filter chips would say they toggle something. */
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  margin-right: auto;
+}
+.nav a {
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.nav a:hover { color: var(--text); background: var(--surface-2); }
+.nav a.on { color: var(--text); background: var(--emph); font-weight: 600; }
+
+a.brand { text-decoration: none; color: inherit; }
+a.brand:hover b { text-decoration: underline; }
+
+/* The controls no longer need to claim the free space; the nav does. */
+.controls { margin-left: 0; }

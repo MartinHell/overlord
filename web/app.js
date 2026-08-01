@@ -111,25 +111,45 @@ function pref(id, name) {
 const midArg = () =>
   state.scope === "mission" && state.missionID ? `missionID: "${state.missionID}"` : "";
 
+// The query is composed from the panels the page actually has.
+//
+// The dashboard used to be every panel at once, so one query fetched
+// everything: the weapons table, the whole event log, the map and the records,
+// on every page. Split across sections, most of that is waste on most pages --
+// /missions needs none of it. Asking the DOM which panels exist keeps the
+// query honest without a second list to keep in step with the markup.
+const wants = (id) => Boolean(el(id));
+
 function dashQuery() {
   const m = midArg();
   const p = m ? `(${m})` : "";
+
+  // Display names back every reference card and most tables, so they come
+  // along wherever anything renders a unit or weapon by name.
+  const needNames = wants("weapons") || wants("records") || wants("killfeed") || wants("traps") || wants("log");
+
   return `{
   missions { id name theatre startedAt events duration }
-  killsByCoalition${p} { coalition kills teamkills }
-  weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }
-  playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }
-  landingGrades(first: 40${m ? ", " + m : ""}) { playerName unitType place grade missionTime }
-  records${p} {
+  ${wants("tug-blue") ? `killsByCoalition${p} { coalition kills teamkills }` : ""}
+  ${wants("weapons") ? `weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }` : ""}
+  ${wants("pilots") ? `playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }` : ""}
+  ${wants("traps") ? `landingGrades(first: 40${m ? ", " + m : ""}) { playerName unitType place grade missionTime }` : ""}
+  ${
+    wants("records")
+      ? `records${p} {
     firstBlood { playerID playerName unitType targetType missionTime }
     longestKill { playerID playerName unitType weaponType targetType rangeM }
     highestKill { playerID playerName unitType targetType altitudeM }
     deadliest { weaponType shots kills killsPerShot }
+  }`
+      : ""
   }
-  collateral${p} { struck levelled trees structures top { displayName count tree } }
-  missionTasks${p} { taskKey title state playerName playerID points }
-  killPoints${p} { lat lon coalition playerName unitType targetType weaponType missionTime }
-  feed: events(first: 8, eventType: "kill"${m ? ", " + m : ""}) {
+  ${wants("collateral") ? `collateral${p} { struck levelled trees structures top { displayName count tree } }` : ""}
+  ${wants("tasks") ? `missionTasks${p} { taskKey title state playerName playerID points }` : ""}
+  ${wants("missionmap") ? `killPoints${p} { lat lon coalition playerName unitType targetType weaponType missionTime }` : ""}
+  ${
+    wants("killfeed")
+      ? `feed: events(first: 8, eventType: "kill"${m ? ", " + m : ""}) {
     edges { node {
       id missionTime coalition
       player { playerID playerName }
@@ -138,9 +158,10 @@ function dashQuery() {
       target { unit { type } }
       targetName
     } }
+  }`
+      : ""
   }
-  units { type displayName }
-  weapons { type displayName }
+  ${needNames ? `units { type displayName }\n  weapons { type displayName }` : ""}
 }`;
 }
 
@@ -365,8 +386,13 @@ function drawHero(d) {
     el("hero-sub").textContent = `${missions.length} missions on file`;
   }
 
-  const nodes = (state.log?.edges || []).map((e) => e.node);
-  el("hero-clock").textContent = nodes.length ? clock(nodes[0].missionTime || 0) : "--:--:--";
+  // The clock is the mission's own span, not the newest row in the event log.
+  // The log is a windowed query that only one section fetches now, and taking
+  // the clock from it meant a long-dead run's 01:12:55 could sit in the header
+  // while the current mission was ten minutes old. A mission's duration is
+  // MAX(mission_time) over its own events, which is the same number and always
+  // the right one.
+  el("hero-clock").textContent = current ? clock(current.duration || 0) : "--:--:--";
 
   const tally = { blue: 0, red: 0, unknown: 0, teamkills: 0 };
   for (const c of d.killsByCoalition || []) {
@@ -682,6 +708,9 @@ function drawMissions(missions) {
     .join("");
 }
 
+// Every section runs the same draw. Each panel is skipped when the page it
+// would render into is not this one, so the sections share one code path
+// rather than each growing its own.
 function draw() {
   const d = state.data;
   if (!d) return;
@@ -689,31 +718,16 @@ function draw() {
   for (const u of d.units || []) names.unit.set(u.type, u.displayName);
   for (const w of d.weapons || []) names.weapon.set(w.type, w.displayName);
 
-  drawHero(d);
-  drawMissions(d.missions || []);
-  drawWeapons(d.weaponEffectiveness || []);
-  drawPilots(d.playerActivity || []);
-  drawTraps(d.landingGrades || []);
-  drawLog(state.log);
-  drawRecords(d.records);
-  drawTasks("tasks", "p-tasks", d.missionTasks);
-  drawMissionMap(d.killPoints);
-  el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
-
-  const nodes = (state.log?.edges || []).map((e) => e.node);
-
-  // The clock reads the newest event, not the maximum in the window. The
-  // database holds many mission runs, and taking the max let a long-dead run's
-  // 01:12:55 sit in the header while the current mission was ten minutes old --
-  // then jump backwards once those events left the window.
-  const latest = nodes.length ? nodes[0].missionTime || 0 : 0;
-  const sorties = (d.playerActivity || []).reduce((s, p) => s + p.takeoffs, 0);
-  const kills = (d.killsByCoalition || []).reduce((s, c) => s + c.kills, 0);
-
-  setStat("ro-clock", clock(latest));
-  setStat("ro-events", nodes.length >= LOG_ROWS ? `${LOG_ROWS}+` : String(nodes.length));
-  setStat("ro-sorties", String(sorties));
-  setStat("ro-kills", String(kills));
+  if (wants("hero-title")) drawHero(d);
+  if (wants("missions")) drawMissions(d.missions || []);
+  if (wants("weapons")) drawWeapons(d.weaponEffectiveness || []);
+  if (wants("pilots")) drawPilots(d.playerActivity || []);
+  if (wants("traps")) drawTraps(d.landingGrades || []);
+  if (wants("log")) drawLog(state.log);
+  if (wants("records")) drawRecords(d.records);
+  if (wants("tasks")) drawTasks("tasks", "p-tasks", d.missionTasks);
+  if (wants("missionmap")) drawMissionMap(d.killPoints);
+  if (wants("collateral")) el("collateral").innerHTML = collateralPanel(d.collateral, "mission");
 }
 
 async function refresh(isRerun) {
@@ -725,7 +739,11 @@ async function refresh(isRerun) {
       state.missionID = m.missions?.[0]?.id || null;
     }
 
-    const [summary, log] = await Promise.all([gql(dashQuery()), fetchLog()]);
+    // The log is its own query and its own page; skip it everywhere else.
+    const [summary, log] = await Promise.all([
+      gql(dashQuery()),
+      wants("log") ? fetchLog() : Promise.resolve(state.log),
+    ]);
 
     // A new mission can start while the page sits open. Adopt it and refetch
     // once, so the page follows the server rather than a finished run.
@@ -2077,7 +2095,18 @@ chips("scope", "scope", (v) => {
   tick();
 });
 
-if (PAGE === "dashboard" || PAGE === "mission") {
+// Mark the section we are in. A mission recap belongs under Missions -- it is
+// one of them -- so it lights that link rather than none.
+{
+  const here = PAGE === "mission" ? "missions" : PAGE;
+  const link = document.querySelector(`.nav a[data-nav="${here}"]`);
+  if (link) {
+    link.classList.add("on");
+    link.setAttribute("aria-current", "page");
+  }
+}
+
+if (PAGE === "dashboard" || PAGE === "mission" || PAGE === "weapons" || PAGE === "log") {
   chips("weapon-class", "class", (v) => (state.weaponClass = v));
 
   // These two change what the query asks for, so they refetch rather than redraw.
@@ -2100,6 +2129,13 @@ if (PAGE === "player") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
     drawPlayer();
+  });
+}
+
+if (PAGE === "missions") {
+  el("q").addEventListener("input", (e) => {
+    state.query = e.target.value.trim().toLowerCase();
+    draw();
   });
 }
 

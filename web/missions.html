@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Declared before any CSS arrives so the browser paints the canvas in a
+     sane colour from the first frame. app.js narrows it to the chosen theme. -->
+<meta name="color-scheme" content="light dark">
+<title>Missions — Overlord</title>
+<link rel="stylesheet" href="/app.css">
+<script>
+  // Resolve the theme before first paint. app.css has no prefers-color-scheme
+  // block: it styles data-theme only, so this attribute has to exist by the
+  // time the stylesheet applies or the page flashes the wrong theme.
+  (function () {
+    var saved = null;
+    try { saved = localStorage.getItem("overlord-theme"); } catch (e) { /* private mode */ }
+    var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  })();
+</script>
+</head>
+<body data-page="missions">
+
+<!-- The same header on every section. The four-figure readout that used to sit
+     here is gone: mission time was already in the hero below it, and the other
+     three were a summary of a page that now has sections of its own. Navigation
+     is worth more than a duplicate. -->
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="/">
+      <b>Overlord</b>
+      <span>DCS debrief</span>
+    </a>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="/" data-nav="dashboard">Debrief</a>
+      <a href="/missions" data-nav="missions">Missions</a>
+      <a href="/weapons" data-nav="weapons">Weapons</a>
+      <a href="/log" data-nav="log">Log</a>
+    </nav>
+
+    <div class="controls">
+      <label class="vh" for="q">Filter everything</label>
+      <input type="search" id="q" placeholder="Filter missions…" autocomplete="off">
+      <button id="theme" type="button">Theme</button>
+      <label class="toggle"><input type="checkbox" id="live" checked> Live</label>
+      <span id="link" class="status" role="status">Connecting</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <section class="card-panel" id="p-missions">
+    <div class="phead"><h2>Missions</h2></div>
+    <p class="note">
+      Every recorded run, newest first. Each has a page of its own — the scoreboard, the map with its
+      replay, and everything that happened — worth pasting into chat. Runs under fifty events are left
+      out; those are server restarts rather than a night worth reading back.
+    </p>
+    <ol id="missions" class="missions"></ol>
+  </section>
+
+</main>
+</main>
+
+<!-- Reference card. Opened by clicking any aircraft or weapon name.
+     A native <dialog> opened with showModal(): the focus trap, Escape to
+     close, the inert background and the backdrop all come with it. The
+     hand-rolled version of this left every control behind it tabbable. -->
+<dialog id="card" class="card" closedby="any" aria-labelledby="card-name">
+  <div class="card-head">
+    <div>
+      <h3 id="card-name">—</h3>
+      <p id="card-sub" class="card-sub"></p>
+    </div>
+    <button id="card-close" type="button">Close</button>
+  </div>
+  <div id="card-body"></div>
+</dialog>
+
+<footer id="foot"></footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

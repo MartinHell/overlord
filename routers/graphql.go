@@ -100,6 +100,13 @@ func GraphQLHandler() {
 	mux.HandleFunc("/player/", servePage("player.html"))
 	mux.HandleFunc("/mission/", servePage("mission.html"))
 
+	// The dashboard's sections. Each is a real URL so it can be linked,
+	// bookmarked and opened in a tab, rather than a panel someone has to scroll
+	// past on the way to the one they wanted.
+	mux.HandleFunc("/missions", servePage("missions.html"))
+	mux.HandleFunc("/weapons", servePage("weapons.html"))
+	mux.HandleFunc("/log", servePage("log.html"))
+
 	// The playground moves off / now that the dashboard lives there. It stays
 	// out of production entirely: it is an unauthenticated query console.
 	if development {
