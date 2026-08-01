@@ -49,15 +49,6 @@ func (r *landingGradeResolver) MissionID(ctx context.Context, obj *models.Landin
 	return optionalID(obj.MissionID), nil
 }
 
-// optionalID renders a nullable database id as a nullable GraphQL one.
-func optionalID(id *uint) *string {
-	if id == nil {
-		return nil
-	}
-	s := fmt.Sprintf("%v", *id)
-	return &s
-}
-
 // ID is the resolver for the id field.
 func (r *missionResolver) ID(ctx context.Context, obj *models.MissionSummary) (string, error) {
 	return fmt.Sprintf("%v", obj.MissionID), nil

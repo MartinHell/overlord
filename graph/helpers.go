@@ -5,7 +5,10 @@ package graph
 // commented graveyard at the bottom, which deleted parseOptionalID the first
 // time the schema was regenerated after it was added.
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // parseOptionalID turns an optional GraphQL ID into a *uint, treating absent,
 // empty and unparseable all as "not narrowed" rather than as errors.
@@ -19,4 +22,13 @@ func parseOptionalID(s *string) *uint {
 	}
 	v := uint(parsed)
 	return &v
+}
+
+// optionalID renders a nullable database id as a nullable GraphQL one.
+func optionalID(id *uint) *string {
+	if id == nil {
+		return nil
+	}
+	s := fmt.Sprintf("%v", *id)
+	return &s
 }
