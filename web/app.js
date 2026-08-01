@@ -117,7 +117,7 @@ function dashQuery() {
   return `{
   missions { id name theatre startedAt events duration }
   killsByCoalition${p} { coalition kills teamkills }
-  weaponEffectiveness${p} { weaponType shots hits kills hitsPerShot killsPerShot }
+  weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }
   playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }
   landingGrades(first: 40${m ? ", " + m : ""}) { playerName unitType place grade missionTime }
   records${p} {
@@ -257,10 +257,15 @@ const playerHay = (n) => (n ? [n, playerLabel(n)] : []);
 
 // Guns report hits with no shot events; airframes appear as weapons when DCS
 // names the aircraft for a collision.
+//
+// Collisions come from the server now. The old rule here was "no shots, not a
+// gun, so it must be a ramming", which quietly mislabels any store whose shot
+// events were dropped upstream -- and shot events do get dropped, which is what
+// the DCS-gRPC patch is for.
 function storeClass(row) {
   if (row.weaponType.startsWith("weapons.shells.")) return "gun";
-  if (row.shots > 0) return "ordnance";
-  return "collision";
+  if (row.collisions > 0 && row.shots === 0) return "collision";
+  return "ordnance";
 }
 
 // A name that opens a reference card. The DCS identifier travels in a data
@@ -408,11 +413,16 @@ function drawHero(d) {
 
 function drawWeapons(rows) {
   const filtered = rows
-    .filter((r) => r.shots || r.hits || r.kills)
+    .filter((r) => r.shots || r.hits || r.kills || r.collisions)
     .filter((r) => state.weaponClass === "all" || storeClass(r) === state.weaponClass)
     .filter((r) => matches(weaponHay(r.weaponType)));
 
   const max = Math.max(1, ...filtered.map((r) => r.shots));
+
+  // The collisions column earns its width only when something in view has one.
+  // A ramming record is otherwise a row of zeroes, since collisions are held
+  // out of hits and kills.
+  const showCollisions = filtered.some((r) => r.collisions > 0);
 
   render(
     "weapons",
@@ -421,6 +431,7 @@ function drawWeapons(rows) {
       { label: "Shots", key: "shots", num: true },
       { label: "Hits", key: "hits", num: true },
       { label: "Kills", key: "kills", num: true },
+      ...(showCollisions ? [{ label: "Collisions", key: "collisions", num: true }] : []),
       { label: "Hits / shot", key: "hitsPerShot", num: true },
       { label: "Kills / shot", key: "killsPerShot", num: true },
     ],
@@ -432,6 +443,7 @@ function drawWeapons(rows) {
       }</td>
       <td class="num">${num(r.hits)}</td>
       <td class="num">${num(r.kills)}</td>
+      ${showCollisions ? `<td class="num">${num(r.collisions)}</td>` : ""}
       <td class="num">${r.shots ? ratio(r.hitsPerShot) : `<span class="zero">—</span>`}</td>
       <td class="num">${r.shots ? ratio(r.killsPerShot) : `<span class="zero">—</span>`}</td>
     </tr>`
@@ -683,7 +695,7 @@ const PLAYER_QUERY = `query($id: ID!, $unitType: String, $m: ID) { playerProfile
   sorties landings crashes ejections deaths shots hits kills teamkills timesKilled
   killDeathRatio firstSeen lastSeen
   aircraft { unitType sorties landings shots hits kills losses ejections hitsPerShot killsPerShot }
-  weapons { weaponType shots hits kills hitsPerShot killsPerShot }
+  weapons { weaponType shots hits kills collisions hitsPerShot killsPerShot }
   matchups { unitType targetType kills }
   killedBy { unitType targetType kills }
   landingGrades { unitType place grade missionTime }
@@ -1326,6 +1338,9 @@ function drawPlayer() {
     drawPlayer
   );
 
+  const pWeapons = (p.weapons || []).filter((w) => matches(weaponHay(w.weaponType)));
+  const pCollisions = pWeapons.some((w) => w.collisions > 0);
+
   render(
     "p-weapons",
     [
@@ -1333,14 +1348,16 @@ function drawPlayer() {
       { label: "Shots", key: "shots", num: true },
       { label: "Hits", key: "hits", num: true },
       { label: "Kills", key: "kills", num: true },
+      ...(pCollisions ? [{ label: "Collisions", key: "collisions", num: true }] : []),
       { label: "Kills / shot", key: "killsPerShot", num: true },
     ],
-    sortRows((p.weapons || []).filter((w) => matches(weaponHay(w.weaponType))), "p-weapons"),
+    sortRows(pWeapons, "p-weapons"),
     (w) => `<tr>
       <td class="name">${ref("weapon", w.weaponType)}</td>
       <td class="num">${num(w.shots)}</td>
       <td class="num">${num(w.hits)}</td>
       <td class="num">${num(w.kills)}</td>
+      ${pCollisions ? `<td class="num">${num(w.collisions)}</td>` : ""}
       <td class="num">${w.shots ? ratio(w.killsPerShot) : `<span class="zero">—</span>`}</td>
     </tr>`,
     drawPlayer
@@ -1461,7 +1478,7 @@ const CARD_UNIT = `query($t: String!) { unitProfile(type: $t) {
 const CARD_WEAPON = `query($t: String!) { weaponProfile(type: $t) {
   type curated name nickname role origin maker blurb source
   specs { qid lengthM wingspanM heightM massKg firstFlight serviceEntry totalProduced makers }
-  shots hits kills hitsPerShot killsPerShot
+  shots hits kills collisions hitsPerShot killsPerShot
   carriers { unitType weapons { count } }
 } }`;
 
@@ -1591,6 +1608,7 @@ async function openCard(kind, type) {
           ${fact("shots", p.shots, true)}
           ${fact("hits", p.hits, true)}
           ${fact("kills", p.kills, true)}
+          ${p.collisions ? fact("collisions", p.collisions, true) : ""}
           ${fact("hits / shot", p.shots ? p.hitsPerShot.toFixed(2) : "—")}
           ${fact("kills / shot", p.shots ? p.killsPerShot.toFixed(2) : "—")}
         </dl>` +

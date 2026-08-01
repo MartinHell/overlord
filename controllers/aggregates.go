@@ -21,6 +21,35 @@ import (
 // BY, and COUNT(*) FILTER is not portable, so conditional counts use
 // SUM(CASE WHEN ...).
 
+// notScenery excludes blast damage to trees, walls and houses. Written against
+// a LEFT JOIN, so an event with no target row at all still counts: the target
+// being unknown is not the same as it having been a tree.
+const notScenery = `(targets.kind IS NULL OR targets.kind <> 'scenery')`
+
+// isCollision recognises DCS naming an airframe as the weapon, which is how it
+// reports an aircraft flown into something.
+//
+// Type equality alone is not enough. A gun hit records the shell as both the
+// initiator object and the weapon, so a bare `initiator.type = weapon.type`
+// test files 17,624 M61 cannon hits in the current database as rammings. Real
+// stores are prefixed `weapons.` by DCS and airframes never are, which
+// separates the two cleanly.
+//
+// Requires the events query to alias units on the initiator as iunits.
+const isCollision = `(iunits.type = weapons.type AND weapons.type NOT LIKE 'weapons.%')`
+
+// sceneryUnitIDs selects every units row that has been seen as scenery.
+//
+// Unit rows carry no kind of their own -- a beech and a Hornet are both just a
+// type string -- so the only record of which is which is the kind stored on the
+// targets that referenced them. Built fresh per call, since a reused *gorm.DB
+// accumulates state.
+func sceneryUnitIDs() *gorm.DB {
+	return initializers.DB.Model(&models.Target{}).
+		Select("targets.unit_id").
+		Where("targets.kind = ?", models.ObjectKindScenery)
+}
+
 // scopeMission narrows an events-rooted query to one mission when set. Nil
 // means all of recorded history, which is what the API defaulted to before
 // missions existed, so existing callers keep their meaning.
@@ -248,6 +277,10 @@ func nestShotRows(rows []shotRow) []*models.PlayerShotBreakdown {
 // A teamkill only counts when both sides are known: two unknown coalitions
 // compare equal but say nothing about whose side anyone was on, and every event
 // recorded before coalition tracking existed is unknown.
+//
+// Scenery is excluded, like every other kill figure. It is the scoreboard on
+// the front page, and counting felled trees toward a coalition's total put 5%
+// of blue's and 7% of red's score down to woodland.
 func GetKillsByCoalition(missionID *uint) ([]*models.CoalitionKills, error) {
 	// Rows predating coalition tracking have an empty string rather than
 	// "unknown", so normalise before grouping.
@@ -261,7 +294,8 @@ func GetKillsByCoalition(missionID *uint) ([]*models.CoalitionKills, error) {
 			COUNT(*) AS kills,
 			SUM(CASE WHEN events.coalition <> '' AND events.coalition <> 'unknown'
 				AND events.target_coalition = events.coalition THEN 1 ELSE 0 END) AS teamkills`).
-		Where("events.event = ?", "kill").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.event = ? AND "+notScenery, "kill").
 		Group(coalitionExpr).
 		Order(coalitionExpr).
 		Scan(&rows).Error
@@ -283,6 +317,12 @@ func GetKillsByCoalition(missionID *uint) ([]*models.CoalitionKills, error) {
 // Hits and kills against scenery are excluded: DCS reports a blast catching a
 // tree as a hit, and counting those would inflate accuracy for anything with a
 // warhead. Shots have no target, so they are counted unconditionally.
+//
+// Collisions are counted separately rather than as hits and kills. DCS names
+// the airframe as the weapon when an aircraft is flown into something, so an
+// A-50 appears as a store with 142 kills to its name. Splitting them out keeps
+// the ratios about what the weapon did and gives the client a real number to
+// filter on instead of inferring collisions from an absent shot count.
 func GetWeaponEffectiveness(missionID *uint) ([]*models.WeaponEffectiveness, error) {
 	var rows []models.WeaponEffectiveness
 
@@ -291,11 +331,14 @@ func GetWeaponEffectiveness(missionID *uint) ([]*models.WeaponEffectiveness, err
 		Select(`weapons.type AS weapon_type,
 			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
 			SUM(CASE WHEN events.event = 'hit'
-				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+				AND `+notScenery+` AND NOT `+isCollision+` THEN 1 ELSE 0 END) AS hits,
 			SUM(CASE WHEN events.event = 'kill'
-				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills`).
+				AND `+notScenery+` AND NOT `+isCollision+` THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event IN ('hit','kill')
+				AND `+isCollision+` THEN 1 ELSE 0 END) AS collisions`).
 		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
 		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN units AS iunits ON iunits.unit_id = events.initiator_unit_id").
 		Where("events.event IN ?", []string{"shot", "hit", "kill"}).
 		Group("weapons.type").
 		Order("weapons.type").
@@ -552,18 +595,23 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 		view.Aircraft = append(view.Aircraft, &aircraft[i])
 	}
 
-	// Per weapon.
+	// Per weapon. Collisions are split out exactly as in
+	// GetWeaponEffectiveness, so a pilot's own airframe cannot be crowned
+	// their weapon of choice on the strength of what it rammed.
 	var weapons []models.WeaponEffectiveness
 	if err := onUnit(db.Model(&models.Event{})).
 		Scopes(scopeMission(missionID)).
 		Select(`weapons.type AS weapon_type,
 			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
 			SUM(CASE WHEN events.event = 'hit'
-				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+				AND `+notScenery+` AND NOT `+isCollision+` THEN 1 ELSE 0 END) AS hits,
 			SUM(CASE WHEN events.event = 'kill'
-				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills`).
+				AND `+notScenery+` AND NOT `+isCollision+` THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event IN ('hit','kill')
+				AND `+isCollision+` THEN 1 ELSE 0 END) AS collisions`).
 		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
 		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN units AS iunits ON iunits.unit_id = events.initiator_unit_id").
 		Where("events.player_id = ?", playerID).
 		Group("weapons.type").
 		Order("shots DESC, kills DESC, weapons.type").
@@ -1123,14 +1171,18 @@ func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {
 		Sorties, Shots, Hits, Kills, Losses, Ejections int
 	}
 
+	// Scenery is excluded from hits and kills here as it is everywhere else.
+	// Without the guard an airframe's card credited it with every tree its
+	// bombs caught, which for a strike aircraft is most of its record.
 	err := initializers.DB.Model(&models.Event{}).
 		Select(`SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
 			SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
-			SUM(CASE WHEN events.event = 'hit' THEN 1 ELSE 0 END) AS hits,
-			SUM(CASE WHEN events.event = 'kill' THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event = 'hit' AND `+notScenery+` THEN 1 ELSE 0 END) AS hits,
+			SUM(CASE WHEN events.event = 'kill' AND `+notScenery+` THEN 1 ELSE 0 END) AS kills,
 			SUM(CASE WHEN events.event IN ('crash','dead','unit_lost','pilot_dead') THEN 1 ELSE 0 END) AS losses,
 			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections`).
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Where("units.type = ?", unitType).
 		Scan(&totals).Error
 	if err != nil {
@@ -1151,7 +1203,8 @@ func GetUnitProfile(unitType string) (*models.UnitProfileView, error) {
 	if err := initializers.DB.Model(&models.Event{}).
 		Joins("JOIN targets ON targets.target_id = events.target_id").
 		Joins("JOIN units ON units.unit_id = targets.unit_id").
-		Where("events.event = ? AND units.type = ?", "kill", unitType).
+		Where("events.event = ? AND units.type = ? AND targets.kind <> ?",
+			"kill", unitType, models.ObjectKindScenery).
 		Count(&killed).Error; err != nil {
 		logs.Sugar.Errorf("Failed to count losses for %q: %v", unitType, err)
 		return nil, err
@@ -1205,11 +1258,14 @@ func GetWeaponProfile(weaponType string) (*models.WeaponProfileView, error) {
 	err := initializers.DB.Model(&models.Event{}).
 		Select(`SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
 			SUM(CASE WHEN events.event = 'hit'
-				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits,
+				AND `+notScenery+` AND NOT `+isCollision+` THEN 1 ELSE 0 END) AS hits,
 			SUM(CASE WHEN events.event = 'kill'
-				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS kills`).
+				AND `+notScenery+` AND NOT `+isCollision+` THEN 1 ELSE 0 END) AS kills,
+			SUM(CASE WHEN events.event IN ('hit','kill')
+				AND `+isCollision+` THEN 1 ELSE 0 END) AS collisions`).
 		Joins("JOIN weapons ON weapons.weapon_id = events.weapon_id").
 		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN units AS iunits ON iunits.unit_id = events.initiator_unit_id").
 		Where("weapons.type = ?", weaponType).
 		Scan(&totals).Error
 	if err != nil {
@@ -1220,6 +1276,7 @@ func GetWeaponProfile(weaponType string) (*models.WeaponProfileView, error) {
 	view.Shots = totals.Shots
 	view.Hits = totals.Hits
 	view.Kills = totals.Kills
+	view.Collisions = totals.Collisions
 	view.HitsPerShot = totals.HitsPerShot()
 	view.KillsPerShot = totals.KillsPerShot()
 
