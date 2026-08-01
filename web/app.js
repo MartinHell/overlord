@@ -733,12 +733,59 @@ async function refreshLog() {
 
 // --- player page -----------------------------------------------------------
 
+// How a flight ended, as a word and a colour. Unknown is its own outcome and
+// says so: DCS simply never reported what happened, and guessing "landed"
+// would be worse than admitting it.
+const OUTCOME_LABEL = {
+  landed: "Landed",
+  crashed: "Crashed",
+  ejected: "Ejected",
+  killed: "Shot down",
+  unknown: "Unclear",
+};
+
+// A duration in words. Reads better than a clock for a span: nobody thinks of
+// a flight as 00:31:20.
+function dur(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+}
+
+// The flight log. One line per sortie: what was flown, how long it lasted,
+// what it got, and how it ended.
+function drawSorties(log) {
+  const panel = el("p-sorties");
+  if (!panel) return;
+
+  const rows = log.filter((s) => matches(unitHay(s.unitType)));
+  panel.hidden = !rows.length;
+  if (!rows.length) return;
+
+  el("sorties").innerHTML = rows
+    .map((s) => {
+      const outcome = OUTCOME_LABEL[s.outcome] || s.outcome;
+      const where = s.missionName || `Mission ${s.missionID}`;
+      const length = s.ended ? dur(s.duration) : "still up";
+      return `<li class="sortie sortie-${esc(s.outcome)}">
+        <span class="sortie-air">${ref("unit", s.unitType)}</span>
+        <span class="sortie-meta">${esc(where)}${s.theatre ? " · " + esc(s.theatre) : ""} · ${esc(length)}</span>
+        <span class="sortie-kills">${s.kills ? `${s.kills} ${s.kills === 1 ? "kill" : "kills"}` : ""}</span>
+        <span class="sortie-end">${esc(outcome)}</span>
+      </li>`;
+    })
+    .join("");
+}
+
 const PLAYER_QUERY = `query($id: ID!, $unitType: String, $m: ID) { playerProfile(playerID: $id, unitType: $unitType, missionID: $m) {
   playerID playerName isAI unitType flown coalitions
   sorties landings crashes ejections deaths shots hits kills teamkills timesKilled
   killDeathRatio firstSeen lastSeen
   aircraft { unitType sorties landings shots hits kills losses ejections hitsPerShot killsPerShot }
   weapons { weaponType shots hits kills collisions hitsPerShot killsPerShot }
+  sortieLog { missionID missionName theatre unitType startTime duration kills outcome ended }
   matchups { unitType targetType kills }
   killedBy { unitType targetType kills }
   landingGrades { unitType place grade missionTime }
@@ -1439,6 +1486,7 @@ function drawPlayer() {
     : "";
 
   drawDossier(p);
+  drawSorties(p.sortieLog || []);
 
   // Filter and per-model page are the same control. These are real links, so a
   // narrowed view is as shareable as the pilot's own page.

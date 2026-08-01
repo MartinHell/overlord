@@ -208,6 +208,40 @@ type PlayerProfile {
 
     "The dossier superlatives: favourite aircraft, worst enemy and so on."
     favourites: Favourites!
+
+    """
+    Recent flights, newest first, capped at forty. Empty for the synthetic AI
+    players: their events pool every AI unit on a coalition, so the span between
+    one takeoff and the next landing would splice together aircraft that never
+    met.
+    """
+    sortieLog: [Sortie!]!
+}
+
+"""
+One flight: wheels up, what it did, and how it ended.
+
+Derived from the ordered events rather than stored, so every flight ever
+recorded has one and there is no table to drift out of step.
+"""
+type Sortie {
+    missionID: ID!
+    "Empty for runs recorded before mission names were captured."
+    missionName: String!
+    theatre: String!
+    "The airframe, when the takeoff event named one."
+    unitType: String!
+    "Mission clock at wheels up, in seconds."
+    startTime: Float!
+    "Mission clock at the end. Meaningless while ended is false."
+    endTime: Float!
+    "Seconds airborne. Zero for a flight that never ended."
+    duration: Float!
+    kills: Int!
+    "How it finished: landed, crashed, ejected, killed, or unknown."
+    outcome: String!
+    "False while the flight is still open — still up, or the recording stopped first."
+    ended: Boolean!
 }
 
 "One superlative: a name and how often it earned the title."

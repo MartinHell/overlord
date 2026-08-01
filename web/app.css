@@ -1183,3 +1183,38 @@ tr.first-place .name a { color: var(--gold); }
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- flight log ---- */
+.sorties { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.sortie {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) auto;
+  align-items: baseline;
+  gap: 0.15rem 0.8rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border-left: 3px solid var(--line-strong);
+  font-size: 0.8125rem;
+}
+.sortie-air { font-weight: 600; }
+.sortie-meta { grid-column: 1; color: var(--text-dim); }
+.sortie-kills { grid-column: 2; grid-row: 2; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sortie-end {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* The outcome carries the only colour on the row, so a run of bad days reads
+   at a glance without turning the panel into a traffic light. */
+.sortie-landed { border-left-color: #3f9a5f; }
+.sortie-landed .sortie-end { color: #3f9a5f; }
+.sortie-ejected { border-left-color: #c9931f; }
+.sortie-ejected .sortie-end { color: #c9931f; }
+.sortie-crashed, .sortie-killed { border-left-color: #c0382e; }
+.sortie-crashed .sortie-end, .sortie-killed .sortie-end { color: #c0382e; }
+.sortie-unknown .sortie-end { color: var(--text-faint); }

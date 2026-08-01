@@ -1,9 +1,49 @@
 package models
 
+import "time"
+
 type UnitWeaponBreakdown struct {
 	Unit    string
 	Weapons []*WeaponShotBreakdown
 }
+
+// Sortie is one flight: wheels up, what happened, and how it ended.
+//
+// Derived from the event stream rather than stored. A sortie is the span
+// between a takeoff and whatever ended it, which the ordered events already
+// describe exactly -- there is nothing a sorties table would know that the
+// events do not. Deriving also means every flight ever recorded has a card,
+// with no backfill and no risk of the table drifting from the events it was
+// built from. If per-sortie attribution is ever wanted on the events
+// themselves, that is when the column earns its place.
+type Sortie struct {
+	MissionID   uint
+	MissionName string
+	Theatre     string
+	// UnitType is the airframe, when the takeoff event named one.
+	UnitType string
+	// StartTime and EndTime are the mission clock, in seconds.
+	StartTime float64
+	EndTime   float64
+	// Duration is zero for a sortie that never ended.
+	Duration float64
+	Kills    int
+	// Outcome is how the flight finished: landed, crashed, ejected, killed,
+	// or unknown when nothing closed it out.
+	Outcome string
+	// Ended is false while the flight is still open -- the pilot is up, or
+	// the recording stopped before they came down.
+	Ended     bool
+	StartedAt time.Time
+}
+
+const (
+	SortieLanded  = "landed"
+	SortieCrashed = "crashed"
+	SortieEjected = "ejected"
+	SortieKilled  = "killed"
+	SortieUnknown = "unknown"
+)
 
 // WeaponEffectiveness is shots against hits against kills for one weapon type.
 // Recording hits is what makes this possible at all: without them there is no
@@ -111,6 +151,9 @@ type PlayerProfileView struct {
 	KillPoints []*KillPoint
 
 	Favourites *Favourites
+	// SortieLog is the pilot's recent flights, newest first. Empty for the
+	// synthetic AI players, whose events pool every unit on a coalition.
+	SortieLog []*Sortie
 }
 
 // Favourite is one superlative: a name, how often it earned the title, and a
