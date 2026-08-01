@@ -216,6 +216,37 @@ type PlayerProfile {
     met.
     """
     sortieLog: [Sortie!]!
+
+    "Head-to-head record against everyone met, people before machines."
+    rivalries: [Rivalry!]!
+    """
+    Airframes this player leads the server on. Career wide whatever the scope
+    says, like a badge: a title is held until somebody takes it.
+    """
+    titles: [Title!]!
+}
+
+"""
+One pilot's record against another.
+
+Victims are tied to a pilot by DCS unit name, since a kill event names the unit
+rather than its owner. Exact within a mission; a best effort across them, as
+unit names get reused.
+"""
+type Rivalry {
+    opponentID: ID
+    opponentName: String!
+    isAI: Boolean!
+    "How many of theirs this player shot down."
+    killed: Int!
+    "How many of this player's they shot down."
+    lost: Int!
+}
+
+"An airframe on which this player holds the server record."
+type Title {
+    unitType: String!
+    kills: Int!
 }
 
 """

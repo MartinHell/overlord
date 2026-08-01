@@ -7,6 +7,25 @@ type UnitWeaponBreakdown struct {
 	Weapons []*WeaponShotBreakdown
 }
 
+// Rivalry is one pilot's record against another: what each has taken off the
+// other. Victims are tied to a pilot by DCS unit name, so this is exact within
+// a mission and a best effort across them, since unit names get reused.
+type Rivalry struct {
+	OpponentID   *uint
+	OpponentName string
+	IsAI         bool
+	// Killed is how many of theirs this player shot down; Lost the reverse.
+	Killed int
+	Lost   int
+}
+
+// Title is an airframe on which this player holds the server record. Career
+// wide, like a badge: a title is held until somebody takes it.
+type Title struct {
+	UnitType string
+	Kills    int
+}
+
 // Sortie is one flight: wheels up, what happened, and how it ended.
 //
 // Derived from the event stream rather than stored. A sortie is the span
@@ -154,6 +173,10 @@ type PlayerProfileView struct {
 	// SortieLog is the pilot's recent flights, newest first. Empty for the
 	// synthetic AI players, whose events pool every unit on a coalition.
 	SortieLog []*Sortie
+	// Rivalries is the head-to-head record against everyone met, people first.
+	Rivalries []*Rivalry
+	// Titles are the airframes this player leads the server on. Career wide.
+	Titles []*Title
 }
 
 // Favourite is one superlative: a name, how often it earned the title, and a

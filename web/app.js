@@ -754,6 +754,47 @@ function dur(seconds) {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
+// Head to head. One line per opponent, with the exchange as a bar: your share
+// of it in your colour, theirs in theirs. A rivalry reads faster as a shape
+// than as two numbers.
+function drawRivals(rivalries) {
+  const panel = el("p-rivals");
+  if (!panel) return;
+
+  const rows = (rivalries || []).filter(
+    (r) => (r.killed || r.lost) && matches(playerHay(r.opponentName))
+  );
+  panel.hidden = !rows.length;
+  if (!rows.length) return;
+
+  el("rivals").innerHTML = rows
+    .map((r) => {
+      const total = r.killed + r.lost;
+      const mine = Math.round((r.killed / total) * 100);
+      const verdict = r.killed > r.lost ? "up" : r.killed < r.lost ? "down" : "level";
+      return `<li class="rival rival-${verdict}">
+        <span class="rival-name">${pref(r.opponentID, r.opponentName)}</span>
+        <span class="rival-bar" role="img"
+              aria-label="${r.killed} to ${r.lost} in your favour">
+          <i style="width:${mine}%"></i>
+        </span>
+        <span class="rival-score"><b>${num(r.killed)}</b> — <b>${num(r.lost)}</b></span>
+      </li>`;
+    })
+    .join("");
+}
+
+// Titles held, as a line in the dossier rather than a panel of its own: it is
+// one more superlative, and an empty one should take up no room.
+function titlesLine(titles) {
+  if (!titles || !titles.length) return "";
+  const names = titles.map((t) => unitName(t.unitType));
+  const shown = names.slice(0, 3).join(", ");
+  const rest = names.length > 3 ? ` +${names.length - 3} more` : "";
+  const what = names.length === 1 ? "airframe" : "airframes";
+  return { value: shown + rest, sub: `top of the server on ${names.length} ${what}` };
+}
+
 // The flight log. One line per sortie: what was flown, how long it lasted,
 // what it got, and how it ended.
 function drawSorties(log) {
@@ -786,6 +827,8 @@ const PLAYER_QUERY = `query($id: ID!, $unitType: String, $m: ID) { playerProfile
   aircraft { unitType sorties landings shots hits kills losses ejections hitsPerShot killsPerShot }
   weapons { weaponType shots hits kills collisions hitsPerShot killsPerShot }
   sortieLog { missionID missionName theatre unitType startTime duration kills outcome ended }
+  rivalries { opponentID opponentName isAI killed lost }
+  titles { unitType kills }
   matchups { unitType targetType kills }
   killedBy { unitType targetType kills }
   landingGrades { unitType place grade missionTime }
@@ -1416,6 +1459,11 @@ function drawDossier(p) {
 
   const lines = [];
 
+  // Titles first when there are any: it is the only line that says something
+  // about this pilot's standing rather than their habits.
+  const held = titlesLine(p.titles);
+  if (held) lines.push(line("Titles held", esc(held.value), held.sub));
+
   // Trivial answers are omitted: the aircraft line when the page is already
   // narrowed to one airframe, the theatre line when the scope is one mission.
   if (!p.unitType && f.aircraft) {
@@ -1486,6 +1534,7 @@ function drawPlayer() {
     : "";
 
   drawDossier(p);
+  drawRivals(p.rivalries);
   drawSorties(p.sortieLog || []);
 
   // Filter and per-model page are the same control. These are real links, so a

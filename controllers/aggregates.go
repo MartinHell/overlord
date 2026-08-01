@@ -798,6 +798,13 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 	}
 	view.SortieLog = sorties
 
+	if view.Rivalries, err = GetRivalries(playerID, missionID); err != nil {
+		return nil, err
+	}
+	if view.Titles, err = GetTitles(playerID); err != nil {
+		return nil, err
+	}
+
 	// Graded landings, newest first.
 	var grades []models.LandingGrade
 	if err := db.Model(&models.Event{}).

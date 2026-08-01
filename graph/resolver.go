@@ -290,6 +290,15 @@ func (r *queryResolver) ShotsByPlayer(ctx context.Context, playerID string) (*mo
 	return controllers.GetShotsByPlayer(id)
 }
 
+// OpponentID is the resolver for the opponentID field.
+func (r *rivalryResolver) OpponentID(ctx context.Context, obj *models.Rivalry) (*string, error) {
+	if obj.OpponentID == nil {
+		return nil, nil
+	}
+	id := fmt.Sprintf("%v", *obj.OpponentID)
+	return &id, nil
+}
+
 // DisplayName is the resolver for the displayName field.
 func (r *sceneryCountResolver) DisplayName(ctx context.Context, obj *models.SceneryCount) (string, error) {
 	return models.SceneryName(obj.Type), nil
@@ -385,6 +394,9 @@ func (r *Resolver) PlayerShotBreakdown() generated.PlayerShotBreakdownResolver {
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+// Rivalry returns generated.RivalryResolver implementation.
+func (r *Resolver) Rivalry() generated.RivalryResolver { return &rivalryResolver{r} }
+
 // SceneryCount returns generated.SceneryCountResolver implementation.
 func (r *Resolver) SceneryCount() generated.SceneryCountResolver { return &sceneryCountResolver{r} }
 
@@ -417,6 +429,7 @@ type (
 	playerProfileResolver       struct{ *Resolver }
 	playerShotBreakdownResolver struct{ *Resolver }
 	queryResolver               struct{ *Resolver }
+	rivalryResolver             struct{ *Resolver }
 	sceneryCountResolver        struct{ *Resolver }
 	sortieResolver              struct{ *Resolver }
 	targetResolver              struct{ *Resolver }

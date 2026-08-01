@@ -1218,3 +1218,31 @@ tr.first-place .name a { color: var(--gold); }
 .sortie-crashed, .sortie-killed { border-left-color: #c0382e; }
 .sortie-crashed .sortie-end, .sortie-killed .sortie-end { color: #c0382e; }
 .sortie-unknown .sortie-end { color: var(--text-faint); }
+
+/* ---- head to head ---- */
+.rivals { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.rival {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 1fr auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.8125rem;
+}
+.rival-name { font-weight: 600; overflow-wrap: anywhere; }
+/* The exchange as one bar: your share filled from the left, theirs the
+   remainder. Two numbers say the same thing; the bar says it at a glance. */
+.rival-bar {
+  height: 0.5rem;
+  min-width: 3rem;
+  border-radius: 999px;
+  background: #c0382e;
+  overflow: hidden;
+}
+.rival-bar i { display: block; height: 100%; background: #2563c9; }
+.rival-score { color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rival-score b { color: var(--text); font-weight: 600; }
+.rival-up .rival-score b:first-child { color: #3f9a5f; }
+.rival-down .rival-score b:last-child { color: #c0382e; }
