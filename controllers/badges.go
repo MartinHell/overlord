@@ -143,6 +143,21 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		return nil, err
 	}
 
+	// Loss events with their ids, for the Reaper streak: a kill streak only
+	// counts while the pilot stays alive, so kills and losses have to be laid
+	// on one timeline. Event id is that timeline -- same ordering the kill
+	// slice uses.
+	var lossIDs []uint
+	if err := db.Model(&models.Event{}).
+		Select("events.id").
+		Where("events.player_id = ? AND events.event IN ?",
+			playerID, []string{"crash", "pilot_dead", "ejection"}).
+		Order("events.id").
+		Scan(&lossIDs).Error; err != nil {
+		logs.Sugar.Errorf("Failed to load losses for player %d: %v", playerID, err)
+		return nil, err
+	}
+
 	// Per-mission sorties, losses and ejections.
 	var perMission []struct {
 		MissionID uint
@@ -202,6 +217,7 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	}
 
 	killsPerMission := map[uint][]killRow{}
+	longestGunM := 0.0
 
 	for _, k := range kills {
 		if k.MissionID != nil {
@@ -213,19 +229,31 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 			target = p.Name
 		}
 
+		isGun := strings.HasPrefix(k.WeaponType, "weapons.shells.")
+
 		if firstKillSet[k.EventID] {
 			add("first-blood", award(k.MissionID, k.CreatedAt, "First kill: "+target))
 		}
-		if strings.HasPrefix(k.WeaponType, "weapons.shells.") {
+		if isGun {
 			add("guns", award(k.MissionID, k.CreatedAt, "Gunned down "+target))
 		}
 		if k.WeaponType != "" && k.WeaponType == k.UnitType {
 			add("ramming-speed", award(k.MissionID, k.CreatedAt, "Rammed "+target))
 		}
 		if k.InitiatorLat != 0 && k.TargetLat != 0 {
-			if d := haversineM(k.InitiatorLat, k.InitiatorLon, k.TargetLat, k.TargetLon); d >= 27780 { // 15 nm
+			d := haversineM(k.InitiatorLat, k.InitiatorLon, k.TargetLat, k.TargetLon)
+			if d >= 27780 { // 15 nm
 				add("long-shot", award(k.MissionID, k.CreatedAt,
 					fmt.Sprintf("%.1f nm on %s", d/1852, target)))
+			}
+			if isGun {
+				if d > longestGunM {
+					longestGunM = d
+				}
+				if d >= 3704 { // 2 nm
+					add("deadeye", award(k.MissionID, k.CreatedAt,
+						fmt.Sprintf("Guns at %.1f nm on %s", d/1852, target)))
+				}
 			}
 		}
 		if roleHas(k.TargetType, "air defence", "surface-to-air") {
@@ -240,7 +268,8 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	}
 
 	// Hat trick: three kills inside sixty seconds of mission clock, windows
-	// not overlapping so five fast kills are one hat trick, not three.
+	// not overlapping so five fast kills are one hat trick, not three. Blitz
+	// runs the same sweep with a five-kill window over five minutes.
 	for mid, ks := range killsPerMission {
 		timed := make([]killRow, 0, len(ks))
 		for _, k := range ks {
@@ -261,9 +290,21 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 				i++
 			}
 		}
+
+		for i := 0; i+4 < len(timed); {
+			span := timed[i+4].MissionTime - timed[i].MissionTime
+			if span <= 300 {
+				m := mid
+				add("blitz", award(&m, timed[i+4].CreatedAt,
+					fmt.Sprintf("5 kills in %.0f seconds", span)))
+				i += 5
+			} else {
+				i++
+			}
+		}
 	}
 
-	// Ace and double ace, per mission.
+	// Ace, double ace and triple ace, per mission.
 	bestKills, bestMission := 0, uint(0)
 	for mid, ks := range killsPerMission {
 		if n := len(ks); n > bestKills {
@@ -276,11 +317,34 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 			if len(ks) >= 10 {
 				add("double-ace", award(&m, when, fmt.Sprintf("%d kills", len(ks))))
 			}
+			if len(ks) >= 15 {
+				add("triple-ace", award(&m, when, fmt.Sprintf("%d kills", len(ks))))
+			}
 		}
 	}
 
-	// Clean sheets and ejections, per mission.
-	cleanBest := 0
+	// Reaper: twenty kills in a row with no loss in between, walked on the
+	// event-id timeline so a death in one mission breaks a streak begun in
+	// another. A forty-kill run is two streaks, not one badge and change.
+	maxRun, run := 0, 0
+	li := 0
+	for _, k := range kills {
+		for li < len(lossIDs) && lossIDs[li] < k.EventID {
+			run = 0
+			li++
+		}
+		run++
+		if run > maxRun {
+			maxRun = run
+		}
+		if run%20 == 0 {
+			add("reaper", award(k.MissionID, k.CreatedAt,
+				fmt.Sprintf("%d kills without dying", run)))
+		}
+	}
+
+	// Clean sheets, untouchables and ejections, per mission.
+	cleanBest, untouchableBest := 0, 0
 	for _, m := range perMission {
 		mid := m.MissionID
 		started := time.Time{}
@@ -292,6 +356,16 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		}
 		if m.Sorties > cleanBest && m.Losses == 0 {
 			cleanBest = m.Sorties
+		}
+		if m.Losses == 0 {
+			ks := killsPerMission[mid]
+			if len(ks) > untouchableBest {
+				untouchableBest = len(ks)
+			}
+			if len(ks) >= 10 {
+				add("untouchable", award(&mid, ks[len(ks)-1].CreatedAt,
+					fmt.Sprintf("%d kills, came home untouched", len(ks))))
+			}
 		}
 		if m.Ejections > 0 {
 			add("nylon-letdown", award(&mid, started, fmt.Sprintf("%d ejection(s)", m.Ejections)))
@@ -363,11 +437,17 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 			fmt.Sprintf("Best so far: %d kills in mission #%d", bestKills, bestMission)),
 		build("double-ace", "Double Ace", "🏅", "Ten kills in a single mission.", 10, bestKills,
 			fmt.Sprintf("Best so far: %d kills in mission #%d", bestKills, bestMission)),
+		build("triple-ace", "Triple Ace", "👑", "Fifteen kills in a single mission.", 15, bestKills,
+			fmt.Sprintf("Best so far: %d kills in mission #%d", bestKills, bestMission)),
 		build("hat-trick", "Hat Trick", "🎩", "Three kills inside sixty seconds.", 1, 0, "Not yet"),
+		build("blitz", "Blitz", "⚡", "Five kills inside five minutes.", 1, 0, "Not yet"),
 		build("guns", "Guns Guns Guns", "🔫", "A kill with the cannon.", 1, 0, "No gun kills yet"),
 		build("long-shot", "Long Shot", "📏",
 			"A kill from more than fifteen nautical miles out. Only kills with recorded positions can qualify.",
 			1, 0, "Nothing beyond 15 nm yet"),
+		build("deadeye", "Deadeye", "🦅",
+			"A gun kill from beyond two nautical miles. Only kills with recorded positions can qualify.",
+			1, 0, deadeyeLocked(longestGunM)),
 		build("sam-slayer", "SAM Slayer", "📡", "Destroy an air-defence unit.", 1, 0, "No SAMs yet"),
 		build("helo-hunter", "Helo Hunter", "🚁", "Shoot down a helicopter.", 1, 0, "No helicopters yet"),
 		build("ramming-speed", "Ramming Speed", "🐏", "A kill where the weapon was your own aircraft.", 1, 0, "Airframe intact so far"),
@@ -381,6 +461,12 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		build("three-wire", "OK 3-Wire", "🪝", "An OK-graded carrier pass on the three wire.", 1, 0, "No graded traps yet"),
 		build("clean-sheet", "Clean Sheet", "🛬", "Five sorties in one mission without losing an aircraft.", 5, cleanBest,
 			fmt.Sprintf("Best clean run: %d sorties", cleanBest)),
+		build("untouchable", "Untouchable", "🛡️",
+			"Ten kills in one mission without crashing, ejecting or dying.", 10, untouchableBest,
+			fmt.Sprintf("Best clean mission: %d kills", untouchableBest)),
+		build("reaper", "Reaper", "☠️",
+			"Twenty kills in a row without dying once. A death anywhere resets the run.", 20, maxRun,
+			fmt.Sprintf("Best streak: %d kills", maxRun)),
 		career("frequent-flyer", "Frequent Flyer", "✈️", "Twenty-five takeoffs, career.",
 			totals.Takeoffs >= 25, totals.Takeoffs, 25, fmt.Sprintf("%d takeoffs", totals.Takeoffs)),
 		build("nylon-letdown", "Nylon Letdown", "🪂", "Ride the silk. Eject once.", 1, 0, "Dry so far"),
@@ -400,6 +486,15 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	}
 
 	return shelf, nil
+}
+
+// deadeyeLocked phrases the locked state around the player's longest ranged
+// gun kill, so the badge taunts with how close they came.
+func deadeyeLocked(longestM float64) string {
+	if longestM <= 0 {
+		return "No gun kills with positions yet"
+	}
+	return fmt.Sprintf("Longest gun kill: %.1f nm", longestM/1852)
 }
 
 // marksmanProgress maps the two gates onto one 0-100 bar: the sample size
