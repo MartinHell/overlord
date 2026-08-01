@@ -90,6 +90,7 @@ const state = {
     "p-grades": { key: "missionTime", dir: -1 },
     tasks: { key: "points", dir: -1 },
     recoveries: { key: "missionTime", dir: -1 },
+    airframes: { key: "kills", dir: -1 },
     "player-tasks": { key: "points", dir: -1 },
   },
   // Which state the mission-task panel is narrowed to, and to whose tasks.
@@ -144,7 +145,13 @@ function dashQuery() {
   // Display names back every reference card and most tables, so they come
   // along wherever anything renders a unit or weapon by name.
   const needNames =
-    wants("weapons") || wants("records") || wants("killfeed") || wants("recoveries") || wants("log");
+    wants("weapons") ||
+    wants("records") ||
+    wants("killfeed") ||
+    wants("recoveries") ||
+    wants("airframes") ||
+    wants("af-matchups") ||
+    wants("log");
 
   return `{
   missions { id name theatre startedAt events duration }
@@ -158,6 +165,8 @@ function dashQuery() {
       : ""
   }
   ${wants("tug-blue") ? `killsByCoalition${p} { coalition kills teamkills }` : ""}
+  ${wants("airframes") ? `airframes${p} { unitType sorties landings shots hits kills collisions losses ejections timesKilled killDeathRatio hitsPerShot killsPerShot }` : ""}
+  ${wants("af-matchups") ? `airframeMatchups${p} { unitType targetType kills }` : ""}
   ${wants("weapons") ? `weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }` : ""}
   ${wants("pilots") ? `playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }` : ""}
   ${
@@ -791,6 +800,49 @@ function highlightLine(h) {
   }
 }
 
+// --- airframes ---------------------------------------------------------------
+
+// Every type side by side. The reference card answers "how did the Hornet do";
+// this answers "compared with what else", which is what the weapons table has
+// been doing for stores all along.
+function drawAirframes(rows) {
+  const list = (rows || []).filter((a) => matches(unitHay(a.unitType)));
+
+  const countEl = el("airframes-count");
+  if (countEl) countEl.textContent = `${num(list.length)} types`;
+
+  // The column only earns its width when something in view has rammed
+  // something, exactly as on the weapons table.
+  const anyCollisions = list.some((a) => a.collisions > 0);
+
+  render(
+    "airframes",
+    [
+      { label: "Type", key: "unitType" },
+      { label: "Sorties", key: "sorties", num: true },
+      { label: "Shots", key: "shots", num: true },
+      { label: "Hits", key: "hits", num: true },
+      { label: "Kills", key: "kills", num: true },
+      ...(anyCollisions ? [{ label: "Collisions", key: "collisions", num: true }] : []),
+      { label: "Lost", key: "timesKilled", num: true },
+      { label: "K/D", key: "killDeathRatio", num: true },
+      { label: "Hits / shot", key: "hitsPerShot", num: true },
+    ],
+    sortRows(list, "airframes"),
+    (a) => `<tr>
+      <td class="name">${ref("unit", a.unitType)}</td>
+      <td class="num">${num(a.sorties)}</td>
+      <td class="num">${num(a.shots)}</td>
+      <td class="num">${num(a.hits)}</td>
+      <td class="num">${num(a.kills)}</td>
+      ${anyCollisions ? `<td class="num">${num(a.collisions)}</td>` : ""}
+      <td class="num">${num(a.timesKilled)}</td>
+      <td class="num">${a.kills || a.timesKilled ? ratio(a.killDeathRatio) : `<span class="zero">—</span>`}</td>
+      <td class="num">${a.shots ? ratio(a.hitsPerShot) : `<span class="zero">—</span>`}</td>
+    </tr>`
+  );
+}
+
 // --- landings ---------------------------------------------------------------
 
 // The Navy's grades, worst to best, with what each is worth and how it reads.
@@ -1008,6 +1060,15 @@ function draw() {
   if (wants("missions")) drawMissions(d.missionIndex || []);
   if (wants("weapons")) drawWeapons(d.weaponEffectiveness || []);
   if (wants("pilots")) drawPilots(d.playerActivity || []);
+  if (wants("airframes")) drawAirframes(d.airframes || []);
+  if (wants("af-matchups")) {
+    el("af-matchups").innerHTML = heatmap(
+      (d.airframeMatchups || []).filter(
+        (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)])
+      ),
+      { rowNoun: "airframes", colNoun: "target types" }
+    );
+  }
   if (wants("landings")) drawLandings(d.landingGrades || []);
   if (wants("recoveries")) drawRecoveries(d.landingGrades || []);
   if (wants("log")) drawLog(state.log);
@@ -2511,7 +2572,7 @@ chips("scope", "scope", (v) => {
   }
 }
 
-if (["dashboard", "mission", "weapons", "log", "landings"].includes(PAGE)) {
+if (["dashboard", "mission", "weapons", "log", "landings", "airframes"].includes(PAGE)) {
   chips("weapon-class", "class", (v) => (state.weaponClass = v));
 
   // Both narrow what is already loaded, so they redraw rather than refetch.
@@ -2549,7 +2610,7 @@ if (PAGE === "player") {
   });
 }
 
-if (PAGE === "missions" || PAGE === "landings") {
+if (["missions", "landings", "airframes"].includes(PAGE)) {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
     resetPages();
