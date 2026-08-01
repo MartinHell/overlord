@@ -28,10 +28,20 @@ func GetPlayerByID(id string) (*models.Player, error) {
 	return firstOrNil[models.Player](initializers.DB.Where("player_id = ?", id))
 }
 
+// GetUnits lists the unit types worth showing: airframes and vehicles, not the
+// woodland they crashed into.
+//
+// Scenery and statics share the units table with real units, because DCS gives
+// both nothing but a type string. That is fine for storage and wrong for a
+// listing -- 197 of the 317 rows in the current database are beeches, cypresses
+// and houses -- so the scenery ones are filtered out here rather than left for
+// every caller to remember.
 func GetUnits() ([]*models.Unit, error) {
 	var units []*models.Unit
 
-	if err := initializers.DB.Order("unit_id").Find(&units).Error; err != nil {
+	if err := initializers.DB.
+		Where("unit_id NOT IN (?)", sceneryUnitIDs()).
+		Order("unit_id").Find(&units).Error; err != nil {
 		logs.Sugar.Errorf("Failed to list units: %v", err)
 		return nil, err
 	}

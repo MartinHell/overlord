@@ -104,6 +104,8 @@ type WeaponProfile {
     shots: Int!
     hits: Int!
     kills: Int!
+    "Hits and kills where this airframe was rammed into something. See WeaponEffectiveness.collisions."
+    collisions: Int!
     hitsPerShot: Float!
     killsPerShot: Float!
     "Airframes and vehicles seen firing it, busiest first."
@@ -114,8 +116,17 @@ type WeaponProfile {
 type WeaponEffectiveness {
     weaponType: String!
     shots: Int!
+    "Excludes scenery and collisions."
     hits: Int!
+    "Excludes scenery and collisions."
     kills: Int!
+    """
+    Hits and kills where DCS named this airframe as the weapon, which is how it
+    reports an aircraft flown into something. Held apart from hits and kills so
+    the ratios stay about what a weapon does. A row with collisions and no shots
+    is a ramming record rather than a store.
+    """
+    collisions: Int!
     """
     Hits divided by shots. A ratio, not a percentage: it exceeds 1 for
     submunition and splash weapons, because DCS emits one shot event per launch
@@ -433,6 +444,7 @@ type LandingGrade {
 
 type CoalitionKills {
     coalition: String!
+    "Excludes scenery, like every other kill figure."
     kills: Int!
     teamkills: Int!
 }
@@ -543,6 +555,7 @@ type Query {
     event(id: ID!): Event
     players: [Player]
     player(id: ID!): Player
+    "Airframes and vehicles. Scenery types share the table and are filtered out."
     units: [Unit]
     unit(id: ID!): Unit
     weapons: [Weapon]

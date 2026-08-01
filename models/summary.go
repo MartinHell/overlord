@@ -13,6 +13,12 @@ type WeaponEffectiveness struct {
 	Shots      int
 	Hits       int
 	Kills      int
+	// Collisions are hits and kills where DCS named this airframe as the
+	// weapon, which is how it reports an aircraft flown into something. Kept
+	// out of Hits and Kills so the ratios stay about what a weapon does, and
+	// reported here so a row can be recognised as a collision rather than
+	// guessed at from having no shots.
+	Collisions int
 }
 
 // HitsPerShot is hits divided by shots. Deliberately a ratio rather than a
@@ -365,9 +371,12 @@ type WeaponProfileView struct {
 	Source   string
 	Specs    *Specs
 
-	Shots        int
-	Hits         int
-	Kills        int
+	Shots int
+	Hits  int
+	Kills int
+	// Collisions are hits and kills where this type was the airframe that did
+	// the ramming rather than a store that was fired. See WeaponEffectiveness.
+	Collisions   int
 	HitsPerShot  float64
 	KillsPerShot float64
 	// Carriers are the airframes seen firing it, busiest first.
