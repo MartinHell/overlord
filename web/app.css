@@ -1246,3 +1246,31 @@ tr.first-place .name a { color: var(--gold); }
 .rival-score b { color: var(--text); font-weight: 600; }
 .rival-up .rival-score b:first-child { color: #3f9a5f; }
 .rival-down .rival-score b:last-child { color: #c0382e; }
+
+/* ---- mission index ---- */
+.missions { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.3rem; }
+.mission-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.3rem 1rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.8125rem;
+}
+.mission-link { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.7rem; text-decoration: none; color: inherit; }
+.mission-link:hover .mission-name { text-decoration: underline; }
+.mission-name { font-weight: 600; }
+.mission-meta, .mission-events { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.mission-live {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--ok);
+  color: var(--surface);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}

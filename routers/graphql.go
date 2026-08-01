@@ -92,24 +92,13 @@ func GraphQLHandler() {
 		dashboard.ServeHTTP(w, r)
 	}))
 
-	// A pilot's record is a page at /player/<id>, so it has to be served on a
-	// refresh, a bookmark or a pasted link and not only when the dashboard
-	// happens to navigate there. The id is read from the path by the client;
-	// the server's job is just to hand over the document.
-	mux.HandleFunc("/player/", func(w http.ResponseWriter, r *http.Request) {
-		page, err := web.FS().Open("player.html")
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		defer func() { _ = page.Close() }()
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
-		if _, err := io.Copy(w, page); err != nil {
-			logs.Sugar.Errorf("Failed to serve player page: %v", err)
-		}
-	})
+	// A pilot's record is a page at /player/<id> and a mission recap one at
+	// /mission/<id>, so both have to be served on a refresh, a bookmark or a
+	// pasted link and not only when the dashboard happens to navigate there.
+	// The id is read from the path by the client; the server's job is just to
+	// hand over the document.
+	mux.HandleFunc("/player/", servePage("player.html"))
+	mux.HandleFunc("/mission/", servePage("mission.html"))
 
 	// The playground moves off / now that the dashboard lives there. It stays
 	// out of production entirely: it is an unauthenticated query console.
@@ -142,6 +131,26 @@ func GraphQLHandler() {
 
 	if err := http.ListenAndServe(host+":"+port, mux); err != nil {
 		logs.Sugar.Fatal(err)
+	}
+}
+
+// servePage hands over one embedded document whatever the rest of the path is,
+// so /player/2 and /mission/37 are real pages rather than client-side illusions
+// that break on a refresh.
+func servePage(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, err := web.FS().Open(name)
+		if err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		defer func() { _ = page.Close() }()
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		if _, err := io.Copy(w, page); err != nil {
+			logs.Sugar.Errorf("Failed to serve %s: %v", name, err)
+		}
 	}
 }
 
