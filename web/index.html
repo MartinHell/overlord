@@ -7,7 +7,7 @@
      sane colour from the first frame. app.js narrows it to the chosen theme. -->
 <meta name="color-scheme" content="light dark">
 <title>Overlord — debrief</title>
-<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="/app.css">
 <!-- Leaflet, pinned and integrity-checked; see player.html for the reasoning. -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -27,19 +27,23 @@
 </head>
 <body data-page="dashboard">
 
+<!-- The same header on every section. The four-figure readout that used to sit
+     here is gone: mission time was already in the hero below it, and the other
+     three were a summary of a page that now has sections of its own. Navigation
+     is worth more than a duplicate. -->
 <header class="top">
   <div class="top-in">
-    <div class="brand">
+    <a class="brand" href="/">
       <b>Overlord</b>
-      <span>Debrief</span>
-    </div>
+      <span>DCS debrief</span>
+    </a>
 
-    <dl class="stats">
-      <div><dt>Mission time</dt><dd id="ro-clock">--:--:--</dd></div>
-      <div><dt>Events</dt><dd id="ro-events">0</dd></div>
-      <div><dt>Sorties</dt><dd id="ro-sorties">0</dd></div>
-      <div><dt>Kills</dt><dd id="ro-kills">0</dd></div>
-    </dl>
+    <nav class="nav" aria-label="Sections">
+      <a href="/" data-nav="dashboard">Debrief</a>
+      <a href="/missions" data-nav="missions">Missions</a>
+      <a href="/weapons" data-nav="weapons">Weapons</a>
+      <a href="/log" data-nav="log">Log</a>
+    </nav>
 
     <div class="controls">
       <div class="chips" id="scope" role="group" aria-label="Time range">
@@ -47,7 +51,7 @@
         <button type="button" data-scope="all">All time</button>
       </div>
       <label class="vh" for="q">Filter everything</label>
-      <input type="search" id="q" placeholder="Search pilots, aircraft, weapons…" autocomplete="off">
+      <input type="search" id="q" placeholder="Search pilots, aircraft…" autocomplete="off">
       <button id="theme" type="button">Theme</button>
       <label class="toggle"><input type="checkbox" id="live" checked> Live</label>
       <span id="link" class="status" role="status">Connecting</span>
@@ -82,14 +86,6 @@
     <ol id="killfeed" class="killfeed"></ol>
   </section>
 
-  <!-- Every recorded run, each its own page. Missions were only ever a filter
-       before this: forty of them with nowhere to link to. -->
-  <section class="card-panel" id="p-missions">
-    <div class="phead"><h2>Missions</h2></div>
-    <p class="note">Every recorded run. Each one has a page of its own worth pasting into chat.</p>
-    <ol id="missions" class="missions"></ol>
-  </section>
-
   <section class="card-panel" id="p-records">
     <div class="phead"><h2>Records</h2></div>
     <div id="records"></div>
@@ -111,25 +107,6 @@
              aria-label="Mission time">
       <span class="scrub-clock" aria-live="off">--:--:--</span>
     </div>
-  </section>
-
-  <section class="card-panel" id="p-weapons">
-    <div class="phead">
-      <h2>Weapons</h2>
-      <div class="chips" id="weapon-class" role="group" aria-label="Filter by weapon type">
-        <button type="button" data-class="all" class="on">All</button>
-        <button type="button" data-class="ordnance">Missiles &amp; bombs</button>
-        <button type="button" data-class="gun">Guns</button>
-        <button type="button" data-class="collision">Collisions</button>
-      </div>
-    </div>
-    <p class="note">
-      Hits per shot is a ratio and can exceed 1 legitimately — DCS reports one shot per launch but one hit per
-      object damaged, so cluster and splash weapons register several. Guns report hits and no shots, so they
-      have no ratio. Rows named after an aircraft are collisions, where DCS names the aircraft as the weapon;
-      those are counted apart from hits and kills so they do not flatter any weapon's figures.
-    </p>
-    <div class="tw"><table id="weapons" class="grid"></table></div>
   </section>
 
   <div class="split">
@@ -155,31 +132,6 @@
     <div class="tw"><table id="tasks" class="grid"></table></div>
   </section>
 
-  <section class="card-panel" id="p-collateral">
-    <div class="phead"><h2>Collateral damage</h2></div>
-    <div id="collateral"></div>
-  </section>
-
-  <section class="card-panel" id="p-log">
-    <div class="phead">
-      <h2>Events</h2>
-      <div class="chips" id="log-filter" role="group" aria-label="Filter the event log">
-        <button type="button" data-ev="all" class="on">All</button>
-        <button type="button" data-ev="kill">Kills</button>
-        <button type="button" data-ev="hit">Hits</button>
-        <button type="button" data-ev="shot">Shots</button>
-        <button type="button" data-ev="losses">Losses</button>
-        <button type="button" data-ev="sortie">Sorties</button>
-      </div>
-      <div class="chips" id="log-side" role="group" aria-label="Filter by coalition">
-        <button type="button" data-side="all" class="on">Both sides</button>
-        <button type="button" data-side="blue" class="side-blue">Blue</button>
-        <button type="button" data-side="red" class="side-red">Red</button>
-      </div>
-    </div>
-    <div class="tw tw-tall"><table id="log" class="grid"></table></div>
-  </section>
-
 </main>
 
 <!-- Reference card. Opened by clicking any aircraft or weapon name.
@@ -199,6 +151,6 @@
 
 <footer id="foot"></footer>
 
-<script src="app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>
