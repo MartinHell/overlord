@@ -88,7 +88,12 @@ const state = {
     "p-aircraft": { key: "sorties", dir: -1 },
     "p-weapons": { key: "shots", dir: -1 },
     "p-grades": { key: "missionTime", dir: -1 },
+    tasks: { key: "points", dir: -1 },
+    "player-tasks": { key: "points", dir: -1 },
   },
+  // Which state the mission-task panel is narrowed to, and to whose tasks.
+  taskState: "all",
+  taskPilot: "",
 };
 
 // The synthetic AI players are stored under a machine-ish name. They are real
@@ -777,7 +782,7 @@ function drawMissions(missions) {
 // answered once.
 function fillPilotFilter(missions) {
   const sel = el("pilot-filter");
-  if (!sel || sel.dataset.filled) return;
+  if (!sel) return;
 
   const seen = new Map();
   for (const m of missions) {
@@ -785,7 +790,12 @@ function fillPilotFilter(missions) {
   }
   if (!seen.size) return;
 
-  sel.dataset.filled = "1";
+  // Rebuilt when the roster changes, not once: somebody's first sortie should
+  // put them in the picker on the next poll.
+  const signature = [...seen.keys()].sort().join(",");
+  if (sel.dataset.signature === signature) return;
+  sel.dataset.signature = signature;
+
   sel.innerHTML =
     `<option value="">Anyone</option>` +
     [...seen.entries()]
@@ -1203,7 +1213,27 @@ function drawRecords(r) {
 
 // Mission tasks, when the mission exports any. The panel stays hidden rather
 // than showing an empty table on servers whose missions say nothing.
-function drawTasks(tableID, panelID, tasks) {
+// The mission's own state word, reduced to the three that matter.
+//
+// State is free text by contract -- the mission says where a task stands and
+// overlord displays it without acting on it -- so the filter groups rather than
+// matches exactly. Anything that is not plainly finished or plainly lost is
+// still in play.
+function taskState(state) {
+  const v = (state || "").toLowerCase();
+  if (["done", "complete", "completed", "success", "succeeded"].includes(v)) return "done";
+  if (["failed", "fail", "lost"].includes(v)) return "failed";
+  return "active";
+}
+
+// maxTasks caps what reaches the DOM. The current mission exports 1,414 tasks;
+// rendering all of them makes a wall nobody reads and a page that janks on
+// every poll. The count line says what was left out.
+const maxTasks = 200;
+
+// Mission tasks, when the mission exports any. The panel stays hidden rather
+// than showing an empty table on servers whose missions say nothing.
+function drawTasks(tableID, panelID, tasks, redraw = draw) {
   const panel = el(panelID);
   if (!panel) return;
   if (!tasks || !tasks.length) {
@@ -1212,19 +1242,118 @@ function drawTasks(tableID, panelID, tasks) {
   }
   panel.hidden = false;
 
-  el(tableID).innerHTML =
-    `<thead><tr><th>Task</th><th>State</th><th>Pilot</th><th class="num">Points</th></tr></thead><tbody>` +
-    tasks
-      .map(
-        (t) => `<tr>
-          <td class="name">${esc(t.title || t.taskKey)}</td>
-          <td><span class="ev ${t.state === "done" ? "ev-kill" : t.state === "failed" ? "ev-loss" : ""}">${esc(t.state || "—")}</span></td>
-          <td>${esc(t.playerName || "—")}</td>
-          <td class="num">${num(t.points)}</td>
-        </tr>`
-      )
-      .join("") +
-    `</tbody>`;
+  fillTaskPilots(tasks);
+
+  // Counts are of everything the mission exported, not of what survives the
+  // filter: a chip that reported its own filtered total would always read the
+  // same number as the table beside it.
+  const tally = { all: tasks.length, done: 0, failed: 0, active: 0 };
+  let earned = 0;
+  for (const t of tasks) {
+    const s = taskState(t.state);
+    tally[s]++;
+    if (s === "done") earned += t.points || 0;
+  }
+  labelTaskChips(tally);
+
+  const rows = tasks
+    .filter((t) => state.taskState === "all" || taskState(t.state) === state.taskState)
+    .filter((t) => {
+      if (!state.taskPilot) return true;
+      if (state.taskPilot === "none") return !t.playerName;
+      return t.playerID === state.taskPilot;
+    })
+    .filter((t) => matches([t.title, t.taskKey, t.playerName]));
+
+  // The tally and count belong to the filtered panel; the pilot page's own
+  // task table has neither and simply skips them.
+  const tallyEl = el("task-tally");
+  if (tallyEl) {
+    tallyEl.innerHTML =
+      `<b>${num(tally.done)}</b> done · <b>${num(tally.failed)}</b> failed · ` +
+      `<b>${num(tally.active)}</b> still running · <b>${num(earned)}</b> points banked`;
+  }
+
+  const shown = rows.slice(0, maxTasks);
+  const countEl = el("task-count");
+  if (countEl) {
+    countEl.textContent =
+      rows.length > shown.length
+        ? `showing ${shown.length} of ${num(rows.length)}`
+        : rows.length === tally.all
+          ? ""
+          : `${num(rows.length)} of ${num(tally.all)}`;
+  }
+
+  render(
+    tableID,
+    [
+      { label: "Task", key: "title" },
+      { label: "State", key: "state" },
+      { label: "Pilot", key: "playerName" },
+      { label: "Points", key: "points", num: true },
+    ],
+    sortRows(shown, tableID),
+    (t) => {
+      const s = taskState(t.state);
+      return `<tr>
+        <td class="name">${esc(t.title || t.taskKey)}</td>
+        <td><span class="ev ${s === "done" ? "ev-kill" : s === "failed" ? "ev-loss" : ""}">${esc(t.state || "—")}</span></td>
+        <td>${t.playerID ? pref(t.playerID, t.playerName) : `<span class="zero">mission</span>`}</td>
+        <td class="num">${num(t.points)}</td>
+      </tr>`;
+    },
+    redraw
+  );
+}
+
+// Chip labels carry their own totals, so the filter says what it would show
+// before it is used.
+function labelTaskChips(tally) {
+  const group = el("task-state");
+  if (!group) return;
+  for (const btn of group.querySelectorAll("button")) {
+    const k = btn.dataset.tstate;
+    const word = btn.dataset.label || btn.textContent.trim();
+    btn.dataset.label = word;
+    btn.innerHTML = `${esc(word)} <b>${num(tally[k] ?? 0)}</b>`;
+  }
+}
+
+// Whose tasks these are. Most are the mission's own rather than any pilot's,
+// so that gets an option of its own instead of being lumped under "anyone".
+// Rebuilt whenever the set of names changes rather than once, because it does
+// change: the first draw of a fresh mission has no pilots in it at all, and
+// switching to all time brings in every pilot who has ever been given a task.
+// Filling it once left the picker permanently stuck on that first empty answer.
+function fillTaskPilots(tasks) {
+  const sel = el("task-pilot");
+  if (!sel) return;
+
+  const seen = new Map();
+  let missionWide = false;
+  for (const t of tasks) {
+    if (t.playerID) seen.set(t.playerID, t.playerName);
+    else missionWide = true;
+  }
+  if (!seen.size && !missionWide) return;
+
+  const signature = (missionWide ? "m|" : "") + [...seen.keys()].sort().join(",");
+  if (sel.dataset.signature === signature) return;
+  sel.dataset.signature = signature;
+
+  sel.innerHTML =
+    `<option value="">Anyone</option>` +
+    (missionWide ? `<option value="none">The mission itself</option>` : "") +
+    [...seen.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([id, name]) => `<option value="${esc(id)}">${esc(playerLabel(name))}</option>`)
+      .join("");
+
+  // A pilot who is no longer in the list cannot stay selected, or the panel
+  // would silently show nothing with no way to tell why.
+  if (state.taskPilot && state.taskPilot !== "none" && !seen.has(state.taskPilot)) state.taskPilot = "";
+  sel.value = state.taskPilot;
 }
 
 // Scenery. Deliberately light, deliberately apart from the real figures, and
@@ -1715,7 +1844,8 @@ function drawPlayer() {
     "p-player-tasks",
     (state.tasks || []).filter(
       (t) => (t.playerID ? t.playerID === p.playerID : t.playerName === p.playerName)
-    )
+    ),
+    drawPlayer
   );
 
   const matchHay = (m) => matches([...unitHay(m.unitType), ...unitHay(m.targetType)]);
@@ -2197,6 +2327,15 @@ chips("scope", "scope", (v) => {
 
 if (PAGE === "dashboard" || PAGE === "mission" || PAGE === "weapons" || PAGE === "log") {
   chips("weapon-class", "class", (v) => (state.weaponClass = v));
+
+  // Both narrow what is already loaded, so they redraw rather than refetch.
+  chips("task-state", "tstate", (v) => (state.taskState = v));
+  if (el("task-pilot")) {
+    el("task-pilot").addEventListener("change", (e) => {
+      state.taskPilot = e.target.value;
+      draw();
+    });
+  }
 
   // These two change what the query asks for, so they refetch rather than redraw.
   chips("log-filter", "ev", (v) => {

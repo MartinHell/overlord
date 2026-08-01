@@ -139,9 +139,22 @@
   </div>
 
   <section class="card-panel" id="p-tasks" hidden>
-    <div class="phead"><h2>Mission tasks</h2></div>
+    <div class="phead">
+      <h2>Mission tasks</h2>
+      <div class="chips" id="task-state" role="group" aria-label="Filter by state">
+        <button type="button" data-tstate="all" class="on">All</button>
+        <button type="button" data-tstate="done">Done</button>
+        <button type="button" data-tstate="failed">Failed</button>
+        <button type="button" data-tstate="active">Active</button>
+      </div>
+      <label class="pick">Whose
+        <select id="task-pilot"><option value="">Anyone</option></select>
+      </label>
+      <span class="count" id="task-count"></span>
+    </div>
     <p class="note">Set and scored by the mission itself, straight from its own scripting.</p>
-    <div class="tw"><table id="tasks" class="grid"></table></div>
+    <p class="tally" id="task-tally"></p>
+    <div class="tw tw-tall"><table id="tasks" class="grid"></table></div>
   </section>
 
   <section class="card-panel" id="p-collateral">
