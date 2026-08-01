@@ -406,6 +406,8 @@ func GetLandingGrades(limit int, missionID *uint) ([]*models.LandingGrade, error
 	err := initializers.DB.Model(&models.Event{}).
 		Scopes(scopeMission(missionID)).
 		Select(`players.player_name AS player_name,
+			events.player_id AS player_id,
+			events.mission_id AS mission_id,
 			units.type AS unit_type,
 			events.place AS place,
 			events.comment AS grade,
@@ -423,6 +425,7 @@ func GetLandingGrades(limit int, missionID *uint) ([]*models.LandingGrade, error
 
 	result := make([]*models.LandingGrade, 0, len(rows))
 	for i := range rows {
+		rows[i].ReadLSO()
 		result = append(result, &rows[i])
 	}
 

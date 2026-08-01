@@ -1405,3 +1405,72 @@ a.brand:hover b { text-decoration: underline; }
 .pager button:disabled { opacity: 0.4; cursor: default; }
 .pager button:disabled:hover { color: var(--text-dim); background: var(--surface); }
 .pg-at { color: var(--text-dim); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+
+/* ---- landings ---- */
+.lso-head { display: flex; flex-wrap: wrap; gap: 0.3rem 2rem; margin: 0 0 1.1rem; }
+.lso-head div { display: flex; flex-direction: column; gap: 0.1rem; }
+.lso-head dt {
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.lso-head dd { margin: 0; font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lso-of { color: var(--text-faint); font-size: 0.8125rem; font-weight: 400; }
+
+.dist-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* One bar per distribution, segments sized by share. Reading a shape is the
+   whole point, so the segments carry their counts and the key names them. */
+.dist { display: flex; height: 1.6rem; border-radius: var(--radius-sm); overflow: hidden; }
+.dist-seg {
+  display: grid;
+  place-items: center;
+  min-width: 1.6rem;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dist-best { background: var(--ok); }
+.dist-ok { background: color-mix(in srgb, var(--ok) 62%, var(--neutral)); }
+.dist-mid { background: var(--neutral); }
+.dist-bad { background: var(--red); }
+
+.dist-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.5rem 0 1.2rem;
+  padding: 0;
+  list-style: none;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+}
+.dist-key li { display: flex; align-items: center; gap: 0.35rem; }
+.dist-key i { width: 0.6rem; height: 0.6rem; border-radius: 2px; }
+.dist-key b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.dist-more { margin: 0.2rem 0 0; font-size: 0.8125rem; }
+
+.lso-mark {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.lso-best { background: var(--ok); color: #fff; }
+.lso-ok { background: color-mix(in srgb, var(--ok) 62%, var(--neutral)); color: #fff; }
+.lso-mid { background: var(--surface-2); color: var(--text-dim); }
+.lso-bad { background: var(--red); color: #fff; }
+.lso-devs { color: var(--text-dim); font-size: 0.8125rem; }

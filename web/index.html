@@ -42,6 +42,7 @@
       <a href="/" data-nav="dashboard">Debrief</a>
       <a href="/missions" data-nav="missions">Missions</a>
       <a href="/weapons" data-nav="weapons">Weapons</a>
+      <a href="/landings" data-nav="landings">Landings</a>
       <a href="/log" data-nav="log">Log</a>
     </nav>
 
@@ -119,10 +120,13 @@
       <div id="opposition" class="opposition"></div>
     </section>
 
-    <section class="card-panel" id="p-traps">
+    <!-- How the recoveries went, not which ones happened. One trap is an
+         argument; the shape of thirty of them is a debrief. The individual
+         passes are a page of their own. -->
+    <section class="card-panel" id="p-landings">
       <div class="phead"><h2>Landings</h2></div>
-      <p class="note">Graded by DCS. Carrier traps include the wire and deviations.</p>
-      <div class="tw"><table id="traps" class="grid"></table></div>
+      <p class="note">Carrier recoveries as the LSO graded them.</p>
+      <div id="landings"></div>
     </section>
   </div>
 

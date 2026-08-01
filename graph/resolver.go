@@ -39,6 +39,25 @@ func (r *killRecordResolver) PlayerID(ctx context.Context, obj *models.KillRecor
 	return fmt.Sprintf("%v", obj.PlayerID), nil
 }
 
+// PlayerID is the resolver for the playerID field.
+func (r *landingGradeResolver) PlayerID(ctx context.Context, obj *models.LandingGrade) (*string, error) {
+	return optionalID(obj.PlayerID), nil
+}
+
+// MissionID is the resolver for the missionID field.
+func (r *landingGradeResolver) MissionID(ctx context.Context, obj *models.LandingGrade) (*string, error) {
+	return optionalID(obj.MissionID), nil
+}
+
+// optionalID renders a nullable database id as a nullable GraphQL one.
+func optionalID(id *uint) *string {
+	if id == nil {
+		return nil
+	}
+	s := fmt.Sprintf("%v", *id)
+	return &s
+}
+
 // ID is the resolver for the id field.
 func (r *missionResolver) ID(ctx context.Context, obj *models.MissionSummary) (string, error) {
 	return fmt.Sprintf("%v", obj.MissionID), nil
@@ -393,6 +412,9 @@ func (r *Resolver) Favourite() generated.FavouriteResolver { return &favouriteRe
 // KillRecord returns generated.KillRecordResolver implementation.
 func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecordResolver{r} }
 
+// LandingGrade returns generated.LandingGradeResolver implementation.
+func (r *Resolver) LandingGrade() generated.LandingGradeResolver { return &landingGradeResolver{r} }
+
 // Mission returns generated.MissionResolver implementation.
 func (r *Resolver) Mission() generated.MissionResolver { return &missionResolver{r} }
 
@@ -457,6 +479,7 @@ type (
 	eventResolver               struct{ *Resolver }
 	favouriteResolver           struct{ *Resolver }
 	killRecordResolver          struct{ *Resolver }
+	landingGradeResolver        struct{ *Resolver }
 	missionResolver             struct{ *Resolver }
 	missionEntryResolver        struct{ *Resolver }
 	missionHighlightResolver    struct{ *Resolver }

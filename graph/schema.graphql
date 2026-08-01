@@ -553,13 +553,36 @@ type MissionTask {
     updatedAt: Time!
 }
 
-"One graded landing. The grade is free text as DCS reported it."
+"""
+One carrier recovery, as the Landing Signal Officer graded it.
+
+DCS reports the whole pass as a single line of LSO shorthand —
+`LSO: GRADE:C : LNFIW  WIRE# 2`. Overlord reads it into parts so it can be
+scored, charted and compared rather than only displayed.
+"""
 type LandingGrade {
     playerName: String
+    playerID: ID
+    missionID: ID
     unitType: String
     place: String
+    "The LSO's line exactly as DCS wrote it."
     grade: String
     missionTime: Float!
+
+    "The grade token alone: _OK_, OK, (OK), ---, B, C or WO."
+    mark: String!
+    "What that grade is worth on the Navy's four-point scale."
+    score: Float!
+    """
+    False for a landing DCS did not grade this way, or a grade we do not
+    recognise. Such a pass must not be averaged in as a zero.
+    """
+    scored: Boolean!
+    "The wire caught, 1 to 4. Zero is a bolter — it caught none."
+    wire: Int!
+    "The LSO's remarks in words. Empty for a clean pass."
+    deviations: [String!]!
 }
 
 type CoalitionKills {

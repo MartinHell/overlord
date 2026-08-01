@@ -18,7 +18,7 @@ import (
 // browser will keep serving the previous version, which looks exactly like a
 // caching problem and is not one.
 //
-//go:embed index.html player.html mission.html missions.html weapons.html log.html app.css app.js
+//go:embed index.html player.html mission.html missions.html weapons.html landings.html log.html app.css app.js
 var files embed.FS
 
 // FS returns the dashboard's static files.
