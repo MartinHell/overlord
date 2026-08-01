@@ -159,6 +159,11 @@ func (t *missionTracker) open(missionTime float64) {
 	t.clock = missionTime
 	logs.Sugar.Infof("Mission %d started (clock %.0fs)", mission.MissionID, missionTime)
 
+	// A run appearing is the one change to the list worth showing before the
+	// cache would have expired on its own -- it is what the dashboard watches
+	// for to follow the server onto the new mission.
+	invalidateMissions()
+
 	go annotateMission(mission.MissionID, false)
 }
 
@@ -204,5 +209,11 @@ func annotateMission(missionID uint, onlyIfEmpty bool) {
 		Where("mission_id = ?", missionID).
 		Updates(updates).Error; err != nil {
 		logs.Sugar.Errorf("Failed to annotate mission %d: %v", missionID, err)
+		return
 	}
+
+	// The name arrives a moment after the mission does, over gRPC. Without this
+	// the heading would read "Mission #48" for the rest of the TTL despite the
+	// row already knowing better.
+	invalidateMissions()
 }

@@ -62,10 +62,12 @@ func scopeMission(missionID *uint) func(*gorm.DB) *gorm.DB {
 	}
 }
 
-// GetMissions lists recorded missions, newest first. Start, size and duration
+// loadMissions reads the mission list, newest first. Start, size and duration
 // are derived from the events rather than stored, so backfilled missions
 // report them exactly like live ones.
-func GetMissions() ([]*models.MissionSummary, error) {
+//
+// Callers want GetMissions, which memoises this; see missionCache.go for why.
+func loadMissions() ([]models.MissionSummary, error) {
 	// MIN over the id rather than over created_at: an aggregated timestamp
 	// comes back from SQLite as a bare string that will not scan into
 	// time.Time, where an integer id scans anywhere. The timestamps behind
@@ -120,9 +122,9 @@ func GetMissions() ([]*models.MissionSummary, error) {
 		}
 	}
 
-	result := make([]*models.MissionSummary, 0, len(rows))
+	result := make([]models.MissionSummary, 0, len(rows))
 	for _, r := range rows {
-		summary := &models.MissionSummary{
+		summary := models.MissionSummary{
 			MissionID: r.MissionID,
 			Name:      r.Name,
 			Theatre:   r.Theatre,
