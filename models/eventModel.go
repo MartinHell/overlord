@@ -14,15 +14,26 @@ import (
 	WeaponID *uint  `json:"weaponid"`
 } */
 
+// Indexing note. Almost every query in the application starts by narrowing the
+// events table on the event type -- kill, shot, hit -- usually together with a
+// mission or a player. Those three were the only columns of interest that had
+// no index, while place and initiator_group, which nothing filters on, had one
+// each. With 293,157 rows that cost a full table scan per query and put the
+// pilot page at 2.5 seconds.
+//
+// The two composites below cover it. SQLite can use a leading subset of a
+// composite index, so (event, mission_id) also serves a bare event lookup and
+// (player_id, event) a bare player one; separate single-column indexes would be
+// redundant with these and only slow inserts further.
 type Event struct {
 	gorm.Model
-	PlayerID *uint
+	PlayerID *uint  `gorm:"index:idx_events_player_event,priority:1"`
 	Player   Player `gorm:"foreignKey:PlayerID;references:PlayerID"`
-	Event    string
+	Event    string `gorm:"index:idx_events_event_mission,priority:1;index:idx_events_player_event,priority:2"`
 	// MissionID ties the event to one run of a mission, so aggregates can be
 	// scoped to "this mission" instead of all of recorded history. Nullable
 	// because rows predate the missions table until the backfill has run.
-	MissionID *uint `gorm:"index"`
+	MissionID *uint `gorm:"index;index:idx_events_event_mission,priority:2"`
 	// MissionTime is the DCS mission clock in seconds, as reported by the event
 	// stream. CreatedAt records when overlord wrote the row, which drifts from
 	// the sim and does not survive a restart mid-mission; this is the timestamp
@@ -32,8 +43,10 @@ type Event struct {
 	// than on Player because a human can switch sides between sorties, so only
 	// the event knows which side they were on when it happened.
 	Coalition       string `gorm:"index"`
-	InitiatorUnitID *uint
-	Initiator       Unit `gorm:"foreignKey:InitiatorUnitID;references:UnitID"`
+	// Indexed because narrowing a pilot's page to one airframe, and the
+	// per-airframe aggregates, both filter through this join.
+	InitiatorUnitID *uint `gorm:"index"`
+	Initiator       Unit  `gorm:"foreignKey:InitiatorUnitID;references:UnitID"`
 	// InitiatorKind mirrors Target.Kind: an initiator can be a static, a weapon
 	// or scenery, not just a unit, and its type is stored in Initiator either
 	// way.
