@@ -58,9 +58,16 @@
 
 <main>
 
+  <!-- What the arsenal did as a whole, before the row-by-row detail. -->
+  <section class="card-panel" id="p-arsenal">
+    <div class="phead"><h2>The arsenal</h2></div>
+    <div id="arsenal"></div>
+  </section>
+
   <section class="card-panel" id="p-weapons">
     <div class="phead">
       <h2>Weapons</h2>
+      <span class="count" id="weapons-count"></span>
       <div class="chips" id="weapon-class" role="group" aria-label="Filter by weapon type">
         <button type="button" data-class="all" class="on">All</button>
         <button type="button" data-class="ordnance">Missiles &amp; bombs</button>
@@ -76,6 +83,15 @@
     </p>
     <div class="tw"><table id="weapons" class="grid"></table></div>
     <div class="pager" id="weapons-pager"></div>
+  </section>
+
+  <section class="card-panel" id="p-wpn-matchups">
+    <div class="phead"><h2>What each store kills</h2></div>
+    <p class="note">
+      The table above says how often a weapon works; this says what it works on. Rows are the store,
+      columns what it destroyed. Collisions and scenery are excluded. Darker is more.
+    </p>
+    <div id="wpn-matchups"></div>
   </section>
 
   <section class="card-panel" id="p-collateral">

@@ -67,6 +67,9 @@ models:
   Sortie:
     model:
       - github.com/MartinHell/overlord/models.Sortie
+  WeaponMatchup:
+    model:
+      - github.com/MartinHell/overlord/models.WeaponMatchup
   AirframeStats:
     model:
       - github.com/MartinHell/overlord/models.AirframeStats

@@ -176,6 +176,11 @@ func (r *queryResolver) AirframeMatchups(ctx context.Context, missionID *string)
 	return controllers.GetAirframeMatchups(parseOptionalID(missionID))
 }
 
+// WeaponMatchups is the resolver for the weaponMatchups field.
+func (r *queryResolver) WeaponMatchups(ctx context.Context, missionID *string) ([]*models.WeaponMatchup, error) {
+	return controllers.GetWeaponMatchups(parseOptionalID(missionID))
+}
+
 // KillsByCoalition returns the kill tally for every coalition at once.
 func (r *queryResolver) KillsByCoalition(ctx context.Context, missionID *string) ([]*models.CoalitionKills, error) {
 	return controllers.GetKillsByCoalition(parseOptionalID(missionID))

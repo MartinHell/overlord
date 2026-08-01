@@ -380,6 +380,18 @@ type AirframeStats {
     killsPerShot: Float!
 }
 
+"""
+One store's kill tally against one target type.
+
+The weapons table says how often a weapon works; this says what it works on,
+which is the difference between a number and a picture.
+"""
+type WeaponMatchup {
+    weaponType: String!
+    targetType: String!
+    kills: Int!
+}
+
 "A kill tally for one airframe against one other type."
 type Matchup {
     "The airframe that did the killing."
@@ -706,6 +718,8 @@ type Query {
     airframes(missionID: ID): [AirframeStats!]!
     "The kill matrix between types, across every pilot: which airframe beats which."
     airframeMatchups(missionID: ID): [Matchup!]!
+    "What each store actually kills, by target type. Collisions and scenery excluded."
+    weaponMatchups(missionID: ID): [WeaponMatchup!]!
     "Kill tally per coalition, covering both sides. Omit missionID for all of recorded history."
     killsByCoalition(missionID: ID): [CoalitionKills!]!
     "Shots, hits, kills, accuracy and Pk per weapon type."

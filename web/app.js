@@ -165,6 +165,7 @@ function dashQuery() {
       : ""
   }
   ${wants("tug-blue") ? `killsByCoalition${p} { coalition kills teamkills }` : ""}
+  ${wants("wpn-matchups") ? `weaponMatchups${p} { weaponType targetType kills }` : ""}
   ${wants("airframes") ? `airframes${p} { unitType sorties landings shots hits kills collisions losses ejections timesKilled killDeathRatio hitsPerShot killsPerShot }` : ""}
   ${wants("af-matchups") ? `airframeMatchups${p} { unitType targetType kills }` : ""}
   ${wants("weapons") ? `weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }` : ""}
@@ -555,6 +556,9 @@ function drawWeapons(rows) {
   // out of hits and kills.
   const showCollisions = filtered.some((r) => r.collisions > 0);
 
+  const countEl = el("weapons-count");
+  if (countEl) countEl.textContent = `${num(filtered.length)} stores`;
+
   render(
     "weapons",
     [
@@ -798,6 +802,57 @@ function highlightLine(h) {
     default:
       return "";
   }
+}
+
+// --- weapons -----------------------------------------------------------------
+
+// What the arsenal did as a whole. Four figures and the two extremes, so the
+// page opens with a sentence rather than a hundred and forty rows.
+function drawArsenal(rows) {
+  const host = el("arsenal");
+  if (!host) return;
+
+  const stores = (rows || []).filter((w) => w.shots > 0);
+  if (!stores.length) {
+    host.innerHTML = `<p class="none">Nothing fired in this view.</p>`;
+    return;
+  }
+
+  const shots = stores.reduce((s, w) => s + w.shots, 0);
+  const hits = stores.reduce((s, w) => s + w.hits, 0);
+  const kills = stores.reduce((s, w) => s + w.kills, 0);
+
+  // Deadliest by conversion rather than by total, over enough launches for the
+  // rate to mean anything -- one lucky shot is not a good weapon.
+  const MIN_SHOTS = 10;
+  const rated = stores.filter((w) => w.shots >= MIN_SHOTS);
+  const best = [...rated].sort((a, b) => b.killsPerShot - a.killsPerShot)[0];
+  const busiest = [...stores].sort((a, b) => b.shots - a.shots)[0];
+  const deadliest = [...stores].sort((a, b) => b.kills - a.kills)[0];
+
+  const fact = (label, value, sub) =>
+    `<div><dt>${esc(label)}</dt><dd>${value}${sub ? `<span class="ars-sub">${sub}</span>` : ""}</dd></div>`;
+
+  host.innerHTML =
+    `<dl class="arsenal">
+      ${fact("Launched", num(shots))}
+      ${fact("Hits", num(hits), `${(hits / shots).toFixed(2)} per shot`)}
+      ${fact("Kills", num(kills), `${(kills / shots).toFixed(2)} per shot`)}
+      ${fact("Stores used", num(stores.length))}
+    </dl>
+    <dl class="arsenal arsenal-named">
+      ${deadliest ? fact("Most kills", ref("weapon", deadliest.weaponType), `${num(deadliest.kills)} of them`) : ""}
+      ${busiest ? fact("Most fired", ref("weapon", busiest.weaponType), `${num(busiest.shots)} launches`) : ""}
+      ${
+        best
+          ? fact(
+              "Best conversion",
+              ref("weapon", best.weaponType),
+              `${best.killsPerShot.toFixed(2)} kills per shot over ${num(best.shots)}`
+            )
+          : ""
+      }
+    </dl>`;
 }
 
 // --- airframes ---------------------------------------------------------------
@@ -1060,6 +1115,15 @@ function draw() {
   if (wants("missions")) drawMissions(d.missionIndex || []);
   if (wants("weapons")) drawWeapons(d.weaponEffectiveness || []);
   if (wants("pilots")) drawPilots(d.playerActivity || []);
+  if (wants("arsenal")) drawArsenal(d.weaponEffectiveness || []);
+  if (wants("wpn-matchups")) {
+    el("wpn-matchups").innerHTML = heatmap(
+      (d.weaponMatchups || [])
+        .filter((m) => matches([...weaponHay(m.weaponType), ...unitHay(m.targetType)]))
+        .map((m) => ({ unitType: m.weaponType, targetType: m.targetType, kills: m.kills })),
+      { rowNoun: "stores", colNoun: "target types", rowKind: "weapon" }
+    );
+  }
   if (wants("airframes")) drawAirframes(d.airframes || []);
   if (wants("af-matchups")) {
     el("af-matchups").innerHTML = heatmap(
@@ -1321,6 +1385,11 @@ const cellKey = (a, b) => `${a}\n${b}`;
 function heatmap(rows, opts) {
   if (!rows || !rows.length) return `<p class="none">Nothing recorded.</p>`;
 
+  // Rows are aircraft by default. The weapons page passes stores instead, so
+  // the label and the reference card it opens have to follow the data.
+  const rowKind = opts.rowKind || "unit";
+  const rowName = rowKind === "weapon" ? weaponName : unitName;
+
   const MAX_ROWS = 6;
   const MAX_COLS = 9;
 
@@ -1351,11 +1420,11 @@ function heatmap(rows, opts) {
           if (!n) return `<td class="hm-cell"><span class="zero">·</span></td>`;
           const fill = 0.12 + (n / peak) * 0.78;
           return `<td class="hm-cell${fill > 0.55 ? " dense" : ""}" title="${esc(
-            `${unitName(rt)} → ${unitName(ct)}: ${n}`
+            `${rowName(rt)} → ${unitName(ct)}: ${n}`
           )}"><span class="hm-fill" style="opacity:${fill.toFixed(3)}"></span><b>${n}</b></td>`;
         })
         .join("");
-      return `<tr><th scope="row">${ref("unit", rt)}</th>${cells}</tr>`;
+      return `<tr><th scope="row">${ref(rowKind, rt)}</th>${cells}</tr>`;
     })
     .join("");
 
