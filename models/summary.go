@@ -521,3 +521,11 @@ func (a *AirframeStats) KillsPerShot() float64 {
 	}
 	return float64(a.Kills) / float64(a.Shots)
 }
+
+// WeaponMatchup is one store's kill tally against one target type: what a
+// weapon is actually used on, as opposed to how often it works.
+type WeaponMatchup struct {
+	WeaponType string
+	TargetType string
+	Kills      int
+}
