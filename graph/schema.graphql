@@ -377,6 +377,61 @@ type Mission {
 }
 
 """
+One row of the mission index: the summary plus what makes this run worth
+opening rather than the one above it.
+
+Separate from Mission because the extra detail costs three more queries and a
+pass over every kill, and Mission is fetched on every page load.
+"""
+type MissionEntry {
+    id: ID!
+    name: String!
+    theatre: String!
+    startedAt: Time!
+    events: Int!
+    duration: Float!
+
+    "Excludes scenery, like every other kill figure."
+    kills: Int!
+    "Takeoffs by anyone, AI included: a measure of how busy the sky was."
+    sorties: Int!
+    """
+    The humans who flew it, busiest first. AI is deliberately absent — it is in
+    every mission, so it distinguishes none of them.
+    """
+    pilots: [MissionPilot!]!
+    "The one thing worth saying about this run. Null when nothing stood out."
+    highlight: MissionHighlight
+}
+
+"One human's presence in a mission."
+type MissionPilot {
+    playerID: ID!
+    playerName: String!
+    kills: Int!
+}
+
+"""
+The standout moment of one run. The client phrases it from these parts.
+
+A human's moment wins over an AI's, even a smaller one: a night where a real
+pilot took two aircraft is a better story than one where an AI coalition took
+ninety, because the AI does that every night.
+"""
+type MissionHighlight {
+    "One of: multikill, ace, longshot, topscorer."
+    kind: String!
+    playerID: ID
+    playerName: String!
+    "Kills — in the burst, in the mission, or the scorer's total."
+    count: Int!
+    "How long a multikill took. Zero for other kinds."
+    seconds: Float!
+    "The range of a long shot, in nautical miles. Zero for other kinds."
+    nm: Float!
+}
+
+"""
 The standout moments of a mission.
 
 Everything else here is an aggregate, which says how a mission went but never
@@ -593,6 +648,8 @@ type Query {
     events(first: Int, after: String, eventType: String, coalition: String, missionID: ID): EventConnection
     "Recorded missions, newest first."
     missions: [Mission!]!
+    "Every recorded run with the detail the index page shows. Heavier than missions; ask for it only there."
+    missionIndex: [MissionEntry!]!
     "Kill tally per coalition, covering both sides. Omit missionID for all of recorded history."
     killsByCoalition(missionID: ID): [CoalitionKills!]!
     "Shots, hits, kills, accuracy and Pk per weapon type."
