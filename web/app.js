@@ -71,6 +71,15 @@ const state = {
   // are the whole point of the page being live.
   scope: "mission",
   missionID: null,
+  // Which pilot the mission index is narrowed to, remembered across visits so
+  // "the ones I was in" only has to be answered once. Empty means anyone.
+  pilotFilter: (() => {
+    try {
+      return localStorage.getItem("overlord-pilot") || "";
+    } catch {
+      return ""; // private mode
+    }
+  })(),
   sort: {
     weapons: { key: "shots", dir: -1 },
     pilots: { key: "takeoffs", dir: -1 },
@@ -130,6 +139,15 @@ function dashQuery() {
 
   return `{
   missions { id name theatre startedAt events duration }
+  ${
+    wants("missions")
+      ? `missionIndex {
+    id name theatre startedAt events duration kills sorties
+    pilots { playerID playerName kills }
+    highlight { kind playerID playerName count seconds nm }
+  }`
+      : ""
+  }
   ${wants("tug-blue") ? `killsByCoalition${p} { coalition kills teamkills }` : ""}
   ${wants("weapons") ? `weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }` : ""}
   ${wants("pilots") ? `playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }` : ""}
@@ -676,36 +694,107 @@ function drawLog(connection) {
 
 // --- draw / refresh --------------------------------------------------------
 
+// The one thing worth saying about a run, phrased here from the parts the
+// server sends. Wording lives with the rest of the wording.
+function highlightLine(h) {
+  if (!h) return "";
+  const who = pref(h.playerID, h.playerName);
+  switch (h.kind) {
+    case "multikill":
+      return `${who} took <b>${h.count}</b> inside ${Math.round(h.seconds)} seconds`;
+    case "ace":
+      return `${who} went <b>${h.count}</b> for the night`;
+    case "longshot":
+      return `a <b>${h.nm.toFixed(1)} nm</b> shot by ${who}`;
+    case "topscorer":
+      return `${who} led with <b>${h.count}</b>`;
+    default:
+      return "";
+  }
+}
+
 // The index of recorded runs. Newest first, each linking to its own recap.
+//
 // Quiet runs are dropped: a mission that recorded four events is a server
 // restart, not a night worth reading back.
 function drawMissions(missions) {
   const host = el("missions");
   if (!host) return;
 
+  fillPilotFilter(missions);
+
   const rows = missions
     .filter((m) => m.events >= 50)
-    .filter((m) => matches([m.name, m.theatre]));
+    .filter((m) => matches([m.name, m.theatre, ...(m.pilots || []).map((p) => p.playerName)]))
+    .filter((m) => !state.pilotFilter || (m.pilots || []).some((p) => p.playerID === state.pilotFilter));
+
+  el("mission-count").textContent = rows.length
+    ? `${rows.length} of ${missions.filter((m) => m.events >= 50).length} runs`
+    : "";
 
   if (!rows.length) {
-    host.innerHTML = `<li class="none">No missions recorded yet.</li>`;
+    host.innerHTML = `<li class="none">${
+      state.pilotFilter ? "No missions recorded for that pilot yet." : "No missions recorded yet."
+    }</li>`;
     return;
   }
 
   host.innerHTML = rows
     .map((m) => {
       const when = m.startedAt ? new Date(m.startedAt) : null;
-      const stamp = when && !isNaN(when) ? when.toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "";
-      const live = m.id === state.missionID && !state.pinnedMission;
-      return `<li class="mission-row">
-        <a class="mission-link" href="/mission/${encodeURIComponent(m.id)}">
-          <span class="mission-name">${esc(m.name || `Mission ${m.id}`)}</span>
-          <span class="mission-meta">${esc(m.theatre || "")}${stamp ? " · " + esc(stamp) : ""} · ${dur(m.duration)}</span>
-        </a>
-        <span class="mission-events">${num(m.events)} events${live ? ` <b class="mission-live">live</b>` : ""}</span>
+      const stamp =
+        when && !isNaN(when)
+          ? when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })
+          : "";
+      const live = m.id === state.missionID;
+      const line = highlightLine(m.highlight);
+      const flew = (m.pilots || []).map((p) => pref(p.playerID, p.playerName)).join(", ");
+
+      return `<li class="mission-card${live ? " is-live" : ""}">
+        <div class="mc-head">
+          <a class="mc-name" href="/mission/${encodeURIComponent(m.id)}">${esc(m.name || `Mission ${m.id}`)}</a>
+          ${live ? `<b class="mission-live">live</b>` : ""}
+          <span class="mc-when">${esc(m.theatre || "Unknown map")}${stamp ? " · " + esc(stamp) : ""}</span>
+        </div>
+
+        <dl class="mc-stats">
+          <div><dt>Kills</dt><dd>${num(m.kills)}</dd></div>
+          <div><dt>Sorties</dt><dd>${num(m.sorties)}</dd></div>
+          <div><dt>Ran for</dt><dd>${dur(m.duration)}</dd></div>
+          <div><dt>Events</dt><dd>${num(m.events)}</dd></div>
+        </dl>
+
+        ${line ? `<p class="mc-highlight"><span aria-hidden="true">★</span> ${line}</p>` : ""}
+        ${flew ? `<p class="mc-pilots">Flown by ${flew}</p>` : ""}
       </li>`;
     })
     .join("");
+}
+
+// The pilot picker, filled from the runs themselves: whoever has flown is
+// whoever you can filter by. There is no login, so "missions I was in" has to
+// be asked as a question -- and the answer is remembered, so it only has to be
+// answered once.
+function fillPilotFilter(missions) {
+  const sel = el("pilot-filter");
+  if (!sel || sel.dataset.filled) return;
+
+  const seen = new Map();
+  for (const m of missions) {
+    for (const p of m.pilots || []) if (!seen.has(p.playerID)) seen.set(p.playerID, p.playerName);
+  }
+  if (!seen.size) return;
+
+  sel.dataset.filled = "1";
+  sel.innerHTML =
+    `<option value="">Anyone</option>` +
+    [...seen.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([id, name]) => `<option value="${esc(id)}">${esc(playerLabel(name))}</option>`)
+      .join("");
+
+  if (state.pilotFilter && seen.has(state.pilotFilter)) sel.value = state.pilotFilter;
+  else state.pilotFilter = "";
 }
 
 // Every section runs the same draw. Each panel is skipped when the page it
@@ -719,7 +808,7 @@ function draw() {
   for (const w of d.weapons || []) names.weapon.set(w.type, w.displayName);
 
   if (wants("hero-title")) drawHero(d);
-  if (wants("missions")) drawMissions(d.missions || []);
+  if (wants("missions")) drawMissions(d.missionIndex || []);
   if (wants("weapons")) drawWeapons(d.weaponEffectiveness || []);
   if (wants("pilots")) drawPilots(d.playerActivity || []);
   if (wants("traps")) drawTraps(d.landingGrades || []);
@@ -2135,6 +2224,16 @@ if (PAGE === "player") {
 if (PAGE === "missions") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
+    draw();
+  });
+
+  el("pilot-filter").addEventListener("change", (e) => {
+    state.pilotFilter = e.target.value;
+    try {
+      localStorage.setItem("overlord-pilot", state.pilotFilter);
+    } catch {
+      /* private mode: the filter still works, it just will not be remembered */
+    }
     draw();
   });
 }

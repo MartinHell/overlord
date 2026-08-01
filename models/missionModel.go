@@ -36,3 +36,56 @@ type MissionSummary struct {
 	// Duration is the highest mission clock seen, in seconds.
 	Duration float64
 }
+
+// MissionEntry is one row of the mission index: the summary plus what makes
+// this run worth opening rather than the one above it.
+//
+// Kept apart from MissionSummary because the extra work is real -- three more
+// queries and a pass over every kill -- and the summary is fetched on every
+// page load by the badge shelf, the flight log and the hero. Only the index
+// asks for this.
+type MissionEntry struct {
+	MissionSummary
+	// Kills excludes scenery, like every other kill figure.
+	Kills int
+	// Sorties is takeoffs by anyone, AI included: it is a measure of how busy
+	// the sky was.
+	Sorties int
+	// Pilots are the humans who flew it, busiest first. AI is deliberately
+	// absent -- it is in every mission, so it distinguishes none of them.
+	Pilots []*MissionPilot
+	// Highlight is the one thing worth saying about this run. Nil when nothing
+	// stood out, which is honest: some nights are quiet.
+	Highlight *MissionHighlight
+}
+
+// MissionPilot is one human's presence in a mission.
+type MissionPilot struct {
+	PlayerID   uint
+	PlayerName string
+	Kills      int
+}
+
+// Highlight kinds, in the order they are preferred. A burst of kills is a
+// better story than a total, and a total is better than nothing.
+const (
+	HighlightMultiKill = "multikill"
+	HighlightAce       = "ace"
+	HighlightLongShot  = "longshot"
+	HighlightTopScorer = "topscorer"
+)
+
+// MissionHighlight is the standout moment of one run, phrased by the client
+// from these parts rather than here -- wording lives with the rest of the
+// wording.
+type MissionHighlight struct {
+	Kind       string
+	PlayerID   *uint
+	PlayerName string
+	// Count is kills: in the burst, in the mission, or the scorer's total.
+	Count int
+	// Seconds is how long a multikill took; Nm the range of a long shot.
+	// Each is zero when the kind does not use it.
+	Seconds float64
+	Nm      float64
+}

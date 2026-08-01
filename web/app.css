@@ -1304,3 +1304,70 @@ a.brand:hover b { text-decoration: underline; }
 
 /* The controls no longer need to claim the free space; the nav does. */
 .controls { margin-left: 0; }
+
+/* ---- mission index ---- */
+/* Rewritten as cards. A row of name-and-date told you which runs existed but
+   nothing about which to open; the numbers and the standout moment do. */
+.missions { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.6rem; }
+
+.mission-card {
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.mission-card.is-live { border-color: var(--ok); }
+
+.mc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.6rem; }
+.mc-name { font-size: 0.9375rem; font-weight: 600; color: inherit; text-decoration: none; }
+.mc-name:hover { text-decoration: underline; }
+.mc-when { color: var(--text-dim); font-size: 0.8125rem; }
+
+/* Four figures on one line, tabular so a column of cards reads down as well
+   as across. */
+.mc-stats { display: flex; flex-wrap: wrap; gap: 0.2rem 1.6rem; margin: 0.6rem 0 0; }
+.mc-stats div { display: flex; flex-direction: column; gap: 0.05rem; }
+.mc-stats dt {
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mc-stats dd { margin: 0; font-size: 0.9375rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The one line that sets this run apart from the one above it, so it gets the
+   only colour on the card. */
+.mc-highlight {
+  margin: 0.6rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+}
+.mc-highlight span { color: var(--gold); }
+.mc-highlight b { color: var(--text); font-weight: 600; }
+
+.mc-pilots { margin: 0.3rem 0 0; color: var(--text-faint); font-size: 0.75rem; }
+
+.count { color: var(--text-faint); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+
+/* The pilot picker: a real select, because the list grows with the roster and
+   chips would not. */
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-dim);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.pick select {
+  padding: 0.35rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+}

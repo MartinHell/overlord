@@ -67,6 +67,15 @@ models:
   Sortie:
     model:
       - github.com/MartinHell/overlord/models.Sortie
+  MissionEntry:
+    model:
+      - github.com/MartinHell/overlord/models.MissionEntry
+  MissionPilot:
+    model:
+      - github.com/MartinHell/overlord/models.MissionPilot
+  MissionHighlight:
+    model:
+      - github.com/MartinHell/overlord/models.MissionHighlight
   Rivalry:
     model:
       - github.com/MartinHell/overlord/models.Rivalry

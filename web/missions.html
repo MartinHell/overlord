@@ -41,6 +41,9 @@
     </nav>
 
     <div class="controls">
+      <label class="pick">Flown by
+        <select id="pilot-filter"><option value="">Anyone</option></select>
+      </label>
       <label class="vh" for="q">Filter everything</label>
       <input type="search" id="q" placeholder="Filter missions…" autocomplete="off">
       <button id="theme" type="button">Theme</button>
@@ -53,7 +56,10 @@
 <main>
 
   <section class="card-panel" id="p-missions">
-    <div class="phead"><h2>Missions</h2></div>
+    <div class="phead">
+      <h2>Missions</h2>
+      <span class="count" id="mission-count"></span>
+    </div>
     <p class="note">
       Every recorded run, newest first. Each has a page of its own — the scoreboard, the map with its
       replay, and everything that happened — worth pasting into chat. Runs under fifty events are left

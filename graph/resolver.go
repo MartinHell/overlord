@@ -44,6 +44,25 @@ func (r *missionResolver) ID(ctx context.Context, obj *models.MissionSummary) (s
 	return fmt.Sprintf("%v", obj.MissionID), nil
 }
 
+// ID is the resolver for the id field.
+func (r *missionEntryResolver) ID(ctx context.Context, obj *models.MissionEntry) (string, error) {
+	return fmt.Sprintf("%v", obj.MissionID), nil
+}
+
+// PlayerID is the resolver for the playerID field.
+func (r *missionHighlightResolver) PlayerID(ctx context.Context, obj *models.MissionHighlight) (*string, error) {
+	if obj.PlayerID == nil {
+		return nil, nil
+	}
+	id := fmt.Sprintf("%v", *obj.PlayerID)
+	return &id, nil
+}
+
+// PlayerID is the resolver for the playerID field.
+func (r *missionPilotResolver) PlayerID(ctx context.Context, obj *models.MissionPilot) (string, error) {
+	return fmt.Sprintf("%v", obj.PlayerID), nil
+}
+
 // PlayerID is the resolver for the playerID field.
 func (r *missionTaskResolver) PlayerID(ctx context.Context, obj *models.MissionTask) (*string, error) {
 	if obj.PlayerID == nil {
@@ -130,6 +149,11 @@ func (r *queryResolver) Events(ctx context.Context, first *int, after *string, e
 // Missions is the resolver for the missions field.
 func (r *queryResolver) Missions(ctx context.Context) ([]*models.MissionSummary, error) {
 	return controllers.GetMissions()
+}
+
+// MissionIndex is the resolver for the missionIndex field.
+func (r *queryResolver) MissionIndex(ctx context.Context) ([]*models.MissionEntry, error) {
+	return controllers.GetMissionIndex()
 }
 
 // KillsByCoalition returns the kill tally for every coalition at once.
@@ -372,6 +396,17 @@ func (r *Resolver) KillRecord() generated.KillRecordResolver { return &killRecor
 // Mission returns generated.MissionResolver implementation.
 func (r *Resolver) Mission() generated.MissionResolver { return &missionResolver{r} }
 
+// MissionEntry returns generated.MissionEntryResolver implementation.
+func (r *Resolver) MissionEntry() generated.MissionEntryResolver { return &missionEntryResolver{r} }
+
+// MissionHighlight returns generated.MissionHighlightResolver implementation.
+func (r *Resolver) MissionHighlight() generated.MissionHighlightResolver {
+	return &missionHighlightResolver{r}
+}
+
+// MissionPilot returns generated.MissionPilotResolver implementation.
+func (r *Resolver) MissionPilot() generated.MissionPilotResolver { return &missionPilotResolver{r} }
+
 // MissionTask returns generated.MissionTaskResolver implementation.
 func (r *Resolver) MissionTask() generated.MissionTaskResolver { return &missionTaskResolver{r} }
 
@@ -423,6 +458,9 @@ type (
 	favouriteResolver           struct{ *Resolver }
 	killRecordResolver          struct{ *Resolver }
 	missionResolver             struct{ *Resolver }
+	missionEntryResolver        struct{ *Resolver }
+	missionHighlightResolver    struct{ *Resolver }
+	missionPilotResolver        struct{ *Resolver }
 	missionTaskResolver         struct{ *Resolver }
 	playerResolver              struct{ *Resolver }
 	playerActivityResolver      struct{ *Resolver }
