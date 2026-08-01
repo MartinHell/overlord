@@ -58,6 +58,20 @@ func roleHas(unitType string, words ...string) bool {
 	return false
 }
 
+// isAeroplane reports whether a type flies on wings, for the air-to-air badge.
+//
+// Helicopters are ruled out first because "attack helicopter" would otherwise
+// match on "attack", and they have their own badge anyway. "Close air support"
+// is listed in full because the A-10 and the Su-25 carry no other keyword.
+func isAeroplane(unitType string) bool {
+	if roleHas(unitType, "helicopter") {
+		return false
+	}
+	return roleHas(unitType,
+		"fighter", "interceptor", "bomber", "attack",
+		"transport", "tanker", "early warning", "close air support")
+}
+
 // GetBadges computes the shelf for one player.
 func GetBadges(playerID uint) ([]*models.Badge, error) {
 	db := initializers.DB
@@ -85,6 +99,13 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	}
 
 	// Every kill by this player, once.
+	//
+	// LEFT JOIN on targets for the same reason the maps use one: DCS fires most
+	// kill events after it has deallocated the victim, so an inner join here
+	// counted roughly a third of them. It made the shelf disagree with the
+	// leaderboard about the same pilot's kills, which is the kind of detail
+	// that makes people stop trusting the numbers. Badges that need to know
+	// what died simply do not match on a nameless target, which is correct.
 	var kills []killRow
 	if err := db.Model(&models.Event{}).
 		Select(`events.id AS event_id,
@@ -100,12 +121,12 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 			events.target_lon AS target_lon,
 			events.coalition AS coalition,
 			events.target_coalition AS target_coalition`).
-		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
 		Joins("LEFT JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
 		Joins("LEFT JOIN weapons ON weapons.weapon_id = events.weapon_id").
-		Where("events.event = ? AND events.player_id = ? AND targets.kind <> ?",
-			"kill", playerID, models.ObjectKindScenery).
+		Where("events.event = ? AND events.player_id = ? AND "+notScenery,
+			"kill", playerID).
 		Order("events.id").
 		Scan(&kills).Error; err != nil {
 		logs.Sugar.Errorf("Failed to load kills for player %d: %v", playerID, err)
@@ -117,9 +138,8 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	var firstKillIDs []uint
 	if err := db.Model(&models.Event{}).
 		Select("MIN(events.id)").
-		Joins("JOIN targets ON targets.target_id = events.target_id").
-		Where("events.event = ? AND targets.kind <> ? AND events.mission_id IS NOT NULL",
-			"kill", models.ObjectKindScenery).
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
+		Where("events.event = ? AND "+notScenery+" AND events.mission_id IS NOT NULL", "kill").
 		Group("events.mission_id").
 		Scan(&firstKillIDs).Error; err != nil {
 		logs.Sugar.Errorf("Failed to find first kills: %v", err)
@@ -130,13 +150,17 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		firstKillSet[id] = true
 	}
 
-	// Career totals the kill slice cannot provide.
+	// Career totals the kill slice cannot provide. Hits exclude scenery, so the
+	// first-hit badge means something struck back rather than a tree fell over.
 	var totals struct {
-		Shots, Takeoffs int
+		Shots, Takeoffs, Hits int
 	}
 	if err := db.Model(&models.Event{}).
 		Select(`SUM(CASE WHEN events.event = 'shot' THEN 1 ELSE 0 END) AS shots,
-			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS takeoffs`).
+			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS takeoffs,
+			SUM(CASE WHEN events.event = 'hit'
+				AND (targets.kind IS NULL OR targets.kind <> 'scenery') THEN 1 ELSE 0 END) AS hits`).
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Where("events.player_id = ?", playerID).
 		Scan(&totals).Error; err != nil {
 		logs.Sugar.Errorf("Failed to total badge stats for player %d: %v", playerID, err)
@@ -158,16 +182,18 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		return nil, err
 	}
 
-	// Per-mission sorties, losses and ejections.
+	// Per-mission sorties, landings, losses and ejections.
 	var perMission []struct {
 		MissionID uint
 		Sorties   int
+		Landings  int
 		Losses    int
 		Ejections int
 	}
 	if err := db.Model(&models.Event{}).
 		Select(`events.mission_id AS mission_id,
 			SUM(CASE WHEN events.event IN ('takeoff','runway_takeoff') THEN 1 ELSE 0 END) AS sorties,
+			SUM(CASE WHEN events.event IN ('land','runway_touch') THEN 1 ELSE 0 END) AS landings,
 			SUM(CASE WHEN events.event IN ('crash','pilot_dead','ejection') THEN 1 ELSE 0 END) AS losses,
 			SUM(CASE WHEN events.event = 'ejection' THEN 1 ELSE 0 END) AS ejections`).
 		Where("events.player_id = ? AND events.mission_id IS NOT NULL", playerID).
@@ -262,6 +288,9 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		if roleHas(k.TargetType, "helicopter") {
 			add("helo-hunter", award(k.MissionID, k.CreatedAt, "Downed "+target))
 		}
+		if isAeroplane(k.TargetType) {
+			add("air-superiority", award(k.MissionID, k.CreatedAt, "Shot down "+target))
+		}
 		if k.Coalition != "" && k.Coalition != models.CoalitionUnknown && k.Coalition == k.TargetCoalition {
 			add("friendly-reminder", award(k.MissionID, k.CreatedAt, "That was a "+target))
 		}
@@ -351,6 +380,14 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 		if s := missionByID[mid]; s != nil {
 			started = s.StartedAt
 		}
+		if m.Sorties >= 1 && m.Landings >= 1 {
+			add("round-trip", award(&mid, started,
+				fmt.Sprintf("%d out, %d back", m.Sorties, m.Landings)))
+		}
+		if m.Sorties >= 1 && m.Losses == 0 {
+			add("survivor", award(&mid, started,
+				fmt.Sprintf("%s, nothing lost", n(m.Sorties, "sortie", "sorties"))))
+		}
 		if m.Sorties >= 5 && m.Losses == 0 {
 			add("clean-sheet", award(&mid, started, fmt.Sprintf("%d sorties, nothing lost", m.Sorties)))
 		}
@@ -432,6 +469,23 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	}
 
 	shelf := []*models.Badge{
+		// The first rungs. A shelf whose easiest badge is "five kills in one
+		// mission" tells a new pilot they have achieved nothing, which on this
+		// server was literally true for everything but two. These are the ones
+		// you earn in a first session, and they come first so the shelf reads
+		// as a climb rather than a wall.
+		career("wheels-up", "Wheels Up", "🛫", "Take off. Everything starts here.",
+			totals.Takeoffs >= 1, totals.Takeoffs, 1, n(totals.Takeoffs, "takeoff", "takeoffs")),
+		build("round-trip", "Round Trip", "🔁", "Take off and land again in the same mission.", 1, 0,
+			"Nothing has come home yet"),
+		career("on-target", "On Target", "💥", "Land a hit on something that was not a tree.",
+			totals.Hits >= 1, totals.Hits, 1, n(totals.Hits, "hit", "hits")),
+		career("maiden-kill", "Maiden Kill", "🔰", "Your first kill.",
+			len(kills) >= 1, len(kills), 1, n(len(kills), "kill", "kills")),
+		build("survivor", "Survivor", "🍀", "Fly a mission and lose nothing.", 1, 0, "Not yet"),
+		build("air-superiority", "Air Superiority", "🛩️", "Shoot down an aeroplane.", 1, 0,
+			"Nothing with wings yet"),
+
 		build("first-blood", "First Blood", "🩸", "Score the first kill of a mission.", 1, 0, "No first kills yet"),
 		build("ace", "Ace", "🎖️", "Five kills in a single mission.", 5, bestKills,
 			fmt.Sprintf("Best so far: %d kills in mission #%d", bestKills, bestMission)),
@@ -486,6 +540,14 @@ func GetBadges(playerID uint) ([]*models.Badge, error) {
 	}
 
 	return shelf, nil
+}
+
+// n renders a count with the right noun: "1 sortie", "4 sorties".
+func n(count int, one, many string) string {
+	if count == 1 {
+		return fmt.Sprintf("%d %s", count, one)
+	}
+	return fmt.Sprintf("%d %s", count, many)
 }
 
 // deadeyeLocked phrases the locked state around the player's longest ranged
