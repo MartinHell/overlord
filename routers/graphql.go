@@ -105,6 +105,7 @@ func GraphQLHandler() {
 	// past on the way to the one they wanted.
 	mux.HandleFunc("/missions", servePage("missions.html"))
 	mux.HandleFunc("/weapons", servePage("weapons.html"))
+	mux.HandleFunc("/landings", servePage("landings.html"))
 	mux.HandleFunc("/log", servePage("log.html"))
 
 	// The playground moves off / now that the dashboard lives there. It stays

@@ -89,6 +89,7 @@ const state = {
     "p-weapons": { key: "shots", dir: -1 },
     "p-grades": { key: "missionTime", dir: -1 },
     tasks: { key: "points", dir: -1 },
+    recoveries: { key: "missionTime", dir: -1 },
     "player-tasks": { key: "points", dir: -1 },
   },
   // Which state the mission-task panel is narrowed to, and to whose tasks.
@@ -142,7 +143,8 @@ function dashQuery() {
 
   // Display names back every reference card and most tables, so they come
   // along wherever anything renders a unit or weapon by name.
-  const needNames = wants("weapons") || wants("records") || wants("killfeed") || wants("traps") || wants("log");
+  const needNames =
+    wants("weapons") || wants("records") || wants("killfeed") || wants("recoveries") || wants("log");
 
   return `{
   missions { id name theatre startedAt events duration }
@@ -158,7 +160,14 @@ function dashQuery() {
   ${wants("tug-blue") ? `killsByCoalition${p} { coalition kills teamkills }` : ""}
   ${wants("weapons") ? `weaponEffectiveness${p} { weaponType shots hits kills collisions hitsPerShot killsPerShot }` : ""}
   ${wants("pilots") ? `playerActivity${p} { playerID playerName kills takeoffs landings crashes ejections deaths }` : ""}
-  ${wants("traps") ? `landingGrades(first: 40${m ? ", " + m : ""}) { playerName unitType place grade missionTime }` : ""}
+  ${
+    wants("landings") || wants("recoveries")
+      ? `landingGrades(first: 500${m ? ", " + m : ""}) {
+    playerName playerID unitType place missionTime
+    mark score scored wire deviations
+  }`
+      : ""
+  }
   ${
     wants("records")
       ? `records${p} {
@@ -782,6 +791,120 @@ function highlightLine(h) {
   }
 }
 
+// --- landings ---------------------------------------------------------------
+
+// The Navy's grades, worst to best, with what each is worth and how it reads.
+// Ordered deliberately: a distribution is a shape, and the shape only means
+// anything if the axis runs one way.
+const LSO_MARKS = [
+  { mark: "WO", label: "Wave off", tone: "bad" },
+  { mark: "C", label: "Cut", tone: "bad" },
+  { mark: "B", label: "Bolter", tone: "mid" },
+  { mark: "---", label: "No grade", tone: "mid" },
+  { mark: "(OK)", label: "Fair", tone: "ok" },
+  { mark: "OK", label: "OK", tone: "ok" },
+  { mark: "_OK_", label: "Perfect", tone: "best" },
+];
+
+// A row of proportional bars. Used for both distributions, since they are the
+// same shape of question: how did these N things fall across these buckets.
+function distBar(buckets, total) {
+  if (!total) return "";
+  return (
+    `<div class="dist">` +
+    buckets
+      .filter((b) => b.n > 0)
+      .map(
+        (b) =>
+          `<span class="dist-seg dist-${b.tone || "mid"}" style="flex-grow:${b.n}"
+                 title="${esc(b.label)}: ${b.n}"><b>${b.n}</b></span>`
+      )
+      .join("") +
+    `</div>` +
+    `<ul class="dist-key">` +
+    buckets
+      .filter((b) => b.n > 0)
+      .map((b) => `<li><i class="dist-${b.tone || "mid"}"></i>${esc(b.label)} <b>${b.n}</b></li>`)
+      .join("") +
+    `</ul>`
+  );
+}
+
+// The landings panel: how the recoveries went, not which ones happened. The
+// list of individual passes is a page of its own, because a debrief wants the
+// shape and an argument about one trap wants the detail.
+function drawLandings(grades) {
+  const host = el("landings");
+  if (!host) return;
+
+  const passes = (grades || []).filter((g) => g.mark);
+  if (!passes.length) {
+    host.innerHTML = `<p class="none">No graded carrier recoveries yet.</p>`;
+    return;
+  }
+
+  const byMark = LSO_MARKS.map((m) => ({
+    ...m,
+    n: passes.filter((p) => p.mark === m.mark).length,
+  }));
+  // Anything DCS graded with a token we do not know still happened.
+  const unknown = passes.filter((p) => !p.scored).length;
+  if (unknown) byMark.push({ mark: "?", label: "Ungraded", tone: "mid", n: unknown });
+
+  const wires = [1, 2, 3, 4].map((w) => ({
+    label: `${w} wire`,
+    tone: w === 3 ? "best" : "mid",
+    n: passes.filter((p) => p.wire === w).length,
+  }));
+  const bolters = passes.filter((p) => p.wire === 0).length;
+  if (bolters) wires.push({ label: "Bolter", tone: "bad", n: bolters });
+
+  const scored = passes.filter((p) => p.scored);
+  const avg = scored.length ? scored.reduce((s, p) => s + p.score, 0) / scored.length : 0;
+
+  host.innerHTML =
+    `<div class="lso-head">
+       <div><dt>Traps</dt><dd>${num(passes.length)}</dd></div>
+       <div><dt>Average</dt><dd>${avg.toFixed(2)}<span class="lso-of"> / 4</span></dd></div>
+       <div><dt>Three wire</dt><dd>${Math.round((wires[2].n / passes.length) * 100)}<span class="lso-of">%</span></dd></div>
+     </div>` +
+    `<h3 class="dist-title">Grades</h3>${distBar(byMark, passes.length)}` +
+    `<h3 class="dist-title">Wire caught</h3>${distBar(wires, passes.length)}` +
+    (el("landings-more") ? "" : `<p class="dist-more"><a href="/landings">Every recovery, one by one →</a></p>`);
+}
+
+// Every pass, for the page that exists to show them.
+function drawRecoveries(grades) {
+  const rows = (grades || [])
+    .filter((g) => g.mark)
+    .filter((g) => matches([g.playerName, g.unitType, g.place, g.mark, ...(g.deviations || [])]));
+
+  render(
+    "recoveries",
+    [
+      { label: "Pilot", key: "playerName" },
+      { label: "Aircraft", key: "unitType" },
+      { label: "Grade", key: "mark" },
+      { label: "Score", key: "score", num: true },
+      { label: "Wire", key: "wire", num: true },
+      { label: "What the LSO saw" },
+      { label: "Time", key: "missionTime", num: true },
+    ],
+    sortRows(rows, "recoveries"),
+    (g) => `<tr>
+      <td class="name">${g.playerID ? pref(g.playerID, g.playerName) : esc(playerLabel(g.playerName))}</td>
+      <td>${ref("unit", g.unitType)}</td>
+      <td><span class="lso-mark lso-${esc(markTone(g.mark))}">${esc(g.mark)}</span></td>
+      <td class="num">${g.scored ? g.score.toFixed(1) : `<span class="zero">—</span>`}</td>
+      <td class="num">${g.wire ? g.wire : `<span class="zero">bolter</span>`}</td>
+      <td class="lso-devs">${g.deviations.length ? esc(g.deviations.join("; ")) : `<span class="zero">clean pass</span>`}</td>
+      <td class="num">${clock(g.missionTime)}</td>
+    </tr>`
+  );
+}
+
+const markTone = (mark) => LSO_MARKS.find((m) => m.mark === mark)?.tone || "mid";
+
 // The index of recorded runs. Newest first, each linking to its own recap.
 //
 // Quiet runs are dropped: a mission that recorded four events is a server
@@ -885,7 +1008,8 @@ function draw() {
   if (wants("missions")) drawMissions(d.missionIndex || []);
   if (wants("weapons")) drawWeapons(d.weaponEffectiveness || []);
   if (wants("pilots")) drawPilots(d.playerActivity || []);
-  if (wants("traps")) drawTraps(d.landingGrades || []);
+  if (wants("landings")) drawLandings(d.landingGrades || []);
+  if (wants("recoveries")) drawRecoveries(d.landingGrades || []);
   if (wants("log")) drawLog(state.log);
   if (wants("records")) drawRecords(d.records);
   if (wants("tasks")) drawTasks("tasks", "p-tasks", d.missionTasks);
@@ -2387,7 +2511,7 @@ chips("scope", "scope", (v) => {
   }
 }
 
-if (PAGE === "dashboard" || PAGE === "mission" || PAGE === "weapons" || PAGE === "log") {
+if (["dashboard", "mission", "weapons", "log", "landings"].includes(PAGE)) {
   chips("weapon-class", "class", (v) => (state.weaponClass = v));
 
   // Both narrow what is already loaded, so they redraw rather than refetch.
@@ -2425,7 +2549,7 @@ if (PAGE === "player") {
   });
 }
 
-if (PAGE === "missions") {
+if (PAGE === "missions" || PAGE === "landings") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
     resetPages();

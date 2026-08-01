@@ -362,11 +362,38 @@ type SceneryCount struct {
 
 // LandingGrade is one graded landing, as DCS reported it.
 type LandingGrade struct {
-	PlayerName  string
-	UnitType    string
-	Place       string
+	PlayerName string
+	UnitType   string
+	Place      string
+	// Grade is the LSO's line exactly as DCS wrote it.
 	Grade       string
 	MissionTime float64
+	// PlayerID links to the pilot when the landing was flown by a known one.
+	PlayerID *uint
+	MissionID *uint
+	// The rest is Grade read out into parts: see ParseLSO. Mark is the grade
+	// token, Score what it is worth out of four, Wire the one caught, and
+	// Deviations the LSO's remarks in words. Scored is false for a landing
+	// DCS did not grade this way, which must not be averaged as a zero.
+	Mark       string
+	Score      float64
+	Scored     bool
+	Wire       int
+	Deviations []string
+}
+
+// ReadLSO fills in the parsed fields from the raw grade. Called once where the
+// rows are built, so every consumer sees the same reading.
+func (g *LandingGrade) ReadLSO() {
+	pass, ok := ParseLSO(g.Grade)
+	if !ok {
+		return
+	}
+	g.Mark = pass.Grade
+	g.Score = pass.Score
+	g.Scored = pass.Graded
+	g.Wire = pass.Wire
+	g.Deviations = pass.Deviations
 }
 
 // CoalitionKills is a kill tally for one coalition.

@@ -6,7 +6,7 @@
 <!-- Declared before any CSS arrives so the browser paints the canvas in a
      sane colour from the first frame. app.js narrows it to the chosen theme. -->
 <meta name="color-scheme" content="light dark">
-<title>Weapons — Overlord</title>
+<title>Landings — Overlord</title>
 <link rel="stylesheet" href="/app.css">
 <script>
   // Resolve the theme before first paint. app.css has no prefers-color-scheme
@@ -20,7 +20,7 @@
   })();
 </script>
 </head>
-<body data-page="weapons">
+<body data-page="landings">
 
 <!-- The same header on every section. The four-figure readout that used to sit
      here is gone: mission time was already in the hero below it, and the other
@@ -47,7 +47,7 @@
         <button type="button" data-scope="all">All time</button>
       </div>
       <label class="vh" for="q">Filter everything</label>
-      <input type="search" id="q" placeholder="Filter weapons…" autocomplete="off">
+      <input type="search" id="q" placeholder="Filter pilots, deviations…" autocomplete="off">
       <button id="theme" type="button">Theme</button>
       <label class="toggle"><input type="checkbox" id="live" checked> Live</label>
       <span id="link" class="status" role="status">Connecting</span>
@@ -57,30 +57,24 @@
 
 <main>
 
-  <section class="card-panel" id="p-weapons">
-    <div class="phead">
-      <h2>Weapons</h2>
-      <div class="chips" id="weapon-class" role="group" aria-label="Filter by weapon type">
-        <button type="button" data-class="all" class="on">All</button>
-        <button type="button" data-class="ordnance">Missiles &amp; bombs</button>
-        <button type="button" data-class="gun">Guns</button>
-        <button type="button" data-class="collision">Collisions</button>
-      </div>
-    </div>
-    <p class="note">
-      Hits per shot is a ratio and can exceed 1 legitimately — DCS reports one shot per launch but one hit per
-      object damaged, so cluster and splash weapons register several. Guns report hits and no shots, so they
-      have no ratio. Rows named after an aircraft are collisions, where DCS names the aircraft as the weapon;
-      those are counted apart from hits and kills so they do not flatter any weapon's figures.
-    </p>
-    <div class="tw"><table id="weapons" class="grid"></table></div>
-    <div class="pager" id="weapons-pager"></div>
+  <section class="card-panel" id="p-landings">
+    <div class="phead"><h2>How the recoveries went</h2></div>
+    <div id="landings"></div>
+    <span id="landings-more" hidden></span>
   </section>
 
-  <section class="card-panel" id="p-collateral">
-    <div class="phead"><h2>Collateral damage</h2></div>
-    <p class="note">What the ordnance above caught that was never a threat.</p>
-    <div id="collateral"></div>
+  <section class="card-panel" id="p-recoveries">
+    <div class="phead">
+      <h2>Every recovery</h2>
+      <span class="count" id="recoveries-count"></span>
+    </div>
+    <p class="note">
+      One row per pass. The grade, the wire and the LSO's remarks come from a single line of
+      shorthand DCS writes — <code>LSO: GRADE:C : LNFIW  WIRE# 2</code> — read out into parts here.
+      Score is the Navy's four-point scale: a perfect pass is 4, a cut pass 1.
+    </p>
+    <div class="tw"><table id="recoveries" class="grid"></table></div>
+    <div class="pager" id="recoveries-pager"></div>
   </section>
 
 </main>
