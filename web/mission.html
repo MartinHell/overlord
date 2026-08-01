@@ -6,8 +6,8 @@
 <!-- Declared before any CSS arrives so the browser paints the canvas in a
      sane colour from the first frame. app.js narrows it to the chosen theme. -->
 <meta name="color-scheme" content="light dark">
-<title>Overlord — debrief</title>
-<link rel="stylesheet" href="app.css">
+<title>Mission recap — Overlord</title>
+<link rel="stylesheet" href="/app.css">
 <!-- Leaflet, pinned and integrity-checked; see player.html for the reasoning. -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
@@ -25,13 +25,13 @@
   })();
 </script>
 </head>
-<body data-page="dashboard">
+<body data-page="mission">
 
 <header class="top">
   <div class="top-in">
     <div class="brand">
-      <b>Overlord</b>
-      <span>Debrief</span>
+      <a href="/"><b>Overlord</b></a>
+      <span>Mission recap</span>
     </div>
 
     <dl class="stats">
@@ -42,10 +42,8 @@
     </dl>
 
     <div class="controls">
-      <div class="chips" id="scope" role="group" aria-label="Time range">
-        <button type="button" data-scope="mission" class="on">This mission</button>
-        <button type="button" data-scope="all">All time</button>
-      </div>
+      <a class="link-a" href="/">← Debrief</a>
+      <button id="share" type="button">Copy link</button>
       <label class="vh" for="q">Filter everything</label>
       <input type="search" id="q" placeholder="Search pilots, aircraft, weapons…" autocomplete="off">
       <button id="theme" type="button">Theme</button>
@@ -80,14 +78,6 @@
     <p class="chart-scale" id="tug-note"></p>
 
     <ol id="killfeed" class="killfeed"></ol>
-  </section>
-
-  <!-- Every recorded run, each its own page. Missions were only ever a filter
-       before this: forty of them with nowhere to link to. -->
-  <section class="card-panel" id="p-missions">
-    <div class="phead"><h2>Missions</h2></div>
-    <p class="note">Every recorded run. Each one has a page of its own worth pasting into chat.</p>
-    <ol id="missions" class="missions"></ol>
   </section>
 
   <section class="card-panel" id="p-records">
@@ -199,6 +189,6 @@
 
 <footer id="foot"></footer>
 
-<script src="app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>

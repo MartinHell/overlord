@@ -650,6 +650,38 @@ function drawLog(connection) {
 
 // --- draw / refresh --------------------------------------------------------
 
+// The index of recorded runs. Newest first, each linking to its own recap.
+// Quiet runs are dropped: a mission that recorded four events is a server
+// restart, not a night worth reading back.
+function drawMissions(missions) {
+  const host = el("missions");
+  if (!host) return;
+
+  const rows = missions
+    .filter((m) => m.events >= 50)
+    .filter((m) => matches([m.name, m.theatre]));
+
+  if (!rows.length) {
+    host.innerHTML = `<li class="none">No missions recorded yet.</li>`;
+    return;
+  }
+
+  host.innerHTML = rows
+    .map((m) => {
+      const when = m.startedAt ? new Date(m.startedAt) : null;
+      const stamp = when && !isNaN(when) ? when.toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "";
+      const live = m.id === state.missionID && !state.pinnedMission;
+      return `<li class="mission-row">
+        <a class="mission-link" href="/mission/${encodeURIComponent(m.id)}">
+          <span class="mission-name">${esc(m.name || `Mission ${m.id}`)}</span>
+          <span class="mission-meta">${esc(m.theatre || "")}${stamp ? " · " + esc(stamp) : ""} · ${dur(m.duration)}</span>
+        </a>
+        <span class="mission-events">${num(m.events)} events${live ? ` <b class="mission-live">live</b>` : ""}</span>
+      </li>`;
+    })
+    .join("");
+}
+
 function draw() {
   const d = state.data;
   if (!d) return;
@@ -658,6 +690,7 @@ function draw() {
   for (const w of d.weapons || []) names.weapon.set(w.type, w.displayName);
 
   drawHero(d);
+  drawMissions(d.missions || []);
   drawWeapons(d.weaponEffectiveness || []);
   drawPilots(d.playerActivity || []);
   drawTraps(d.landingGrades || []);
@@ -696,8 +729,12 @@ async function refresh(isRerun) {
 
     // A new mission can start while the page sits open. Adopt it and refetch
     // once, so the page follows the server rather than a finished run.
+    //
+    // Except on a mission recap, which is pinned to the run in its URL: that
+    // page following the server would be it silently becoming a different page
+    // than the link someone shared.
     const newest = summary.missions?.[0]?.id || null;
-    if (state.scope === "mission" && newest && newest !== state.missionID && !isRerun) {
+    if (!state.pinnedMission && state.scope === "mission" && newest && newest !== state.missionID && !isRerun) {
       state.missionID = newest;
       return refresh(true);
     }
@@ -1979,6 +2016,16 @@ window.addEventListener("hashchange", openFromHash);
 // not exist on a pilot page and vice versa.
 const PAGE = document.body.dataset.page;
 
+// A mission recap is one finished run, pinned by its own URL. Everything else
+// on the page is the dashboard's, asking the same scoped queries -- the only
+// difference is that the mission never changes underneath it.
+if (PAGE === "mission") {
+  const m = location.pathname.match(/^\/mission\/([^/]+)\/?$/);
+  state.scope = "mission";
+  state.missionID = m ? decodeURIComponent(m[1]) : null;
+  state.pinnedMission = true;
+}
+
 // Whichever page this is, it polls the same way.
 const tick = PAGE === "player" ? loadPlayer : refresh;
 
@@ -2010,6 +2057,9 @@ document.addEventListener("visibilitychange", () => {
 });
 
 function chips(container, attr, onPick) {
+  // Not every control exists on every page: a mission recap is one finished
+  // run, so it has no scope toggle to wire.
+  if (!el(container)) return;
   el(container).addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
@@ -2027,7 +2077,7 @@ chips("scope", "scope", (v) => {
   tick();
 });
 
-if (PAGE === "dashboard") {
+if (PAGE === "dashboard" || PAGE === "mission") {
   chips("weapon-class", "class", (v) => (state.weaponClass = v));
 
   // These two change what the query asks for, so they refetch rather than redraw.
@@ -2050,6 +2100,23 @@ if (PAGE === "player") {
   el("q").addEventListener("input", (e) => {
     state.query = e.target.value.trim().toLowerCase();
     drawPlayer();
+  });
+}
+
+// Copy link. The URL bar already holds it, but the point of a recap is that it
+// gets pasted into chat, and a button says so in a way an address bar does not.
+if (el("share")) {
+  el("share").addEventListener("click", async () => {
+    const btn = el("share");
+    try {
+      await navigator.clipboard.writeText(location.href);
+      btn.textContent = "Copied";
+    } catch {
+      // Denied, or an insecure origin. Select it instead so the keyboard still
+      // works -- failing silently would look like the button is broken.
+      btn.textContent = "Copy from the address bar";
+    }
+    setTimeout(() => (btn.textContent = "Copy link"), 2000);
   });
 }
 
