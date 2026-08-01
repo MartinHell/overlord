@@ -451,15 +451,19 @@ function drawWeapons(rows) {
 }
 
 function drawPilots(rows) {
-  // Quiet AI buckets are hidden, but a human is always listed even with nothing
-  // against their name yet: they are a real person with a page, and dropping
-  // the row is the difference between "no sorties" and "not here".
+  drawOpposition(rows);
+
+  // Humans only, and every one of them is listed even with nothing against
+  // their name yet: they are a real person with a page, and dropping the row is
+  // the difference between "no sorties" and "not here".
+  //
+  // The AI is deliberately not here. It is not a rival -- it is three synthetic
+  // coalition buckets holding every AI kill on the server, and ranking a person
+  // against them means a real pilot with four kills opens the page and finds
+  // themselves last behind three robot armies. That is not a leaderboard, it is
+  // a discouragement. The AI's tally moves to its own strip below.
   const filtered = rows
-    .filter(
-      (r) =>
-        !isAIName(r.playerName) ||
-        r.takeoffs || r.landings || r.crashes || r.ejections || r.deaths
-    )
+    .filter((r) => !isAIName(r.playerName))
     .filter((r) => matches(playerHay(r.playerName)));
 
   // Ranked by score when the mission awards any, kills otherwise. The medals
@@ -507,6 +511,45 @@ function drawPilots(rows) {
       <td class="num">${num(r.deaths)}</td>
     </tr>`
   );
+
+  if (!filtered.length) {
+    el("pilots").innerHTML =
+      `<tbody><tr><td class="none">No human pilots on record yet. Fly one sortie and this is your board.</td></tr></tbody>`;
+  }
+}
+
+// The AI's tally, kept off the leaderboard and rendered as what it is: the
+// opposition, and the weather. Still linked, because the AI player pages are
+// worth reading -- they are the record of everything the war did.
+function drawOpposition(rows) {
+  const host = el("opposition");
+  if (!host) return;
+
+  const ai = rows
+    .filter((r) => isAIName(r.playerName))
+    .filter((r) => r.kills || r.takeoffs || r.deaths || r.crashes)
+    .sort((a, b) => b.kills - a.kills);
+
+  if (!ai.length) {
+    host.innerHTML = "";
+    return;
+  }
+
+  host.innerHTML =
+    `<h3 class="opp-head">The opposition</h3>` +
+    `<p class="note">Every AI kill on the server, pooled per coalition. Not ranked against people.</p>` +
+    `<ul class="opp-list">` +
+    ai
+      .map(
+        (r) => `<li>
+          <span class="opp-name">${pref(r.playerID, r.playerName)}</span>
+          <span class="opp-stat"><b>${num(r.kills)}</b> kills</span>
+          <span class="opp-stat"><b>${num(r.takeoffs)}</b> sorties</span>
+          <span class="opp-stat"><b>${num(r.crashes + r.deaths)}</b> lost</span>
+        </li>`
+      )
+      .join("") +
+    `</ul>`;
 }
 
 function drawTraps(rows) {
@@ -996,6 +1039,14 @@ let killMap = null;
 let killLayer = null;
 let killMapFitted = false;
 
+// Most kills name nothing: DCS fires the event after it has already
+// deallocated the victim, so about two thirds of them arrive with coordinates
+// and no target object. Those dots are real and belong on the map. They say so
+// rather than rendering a blank, and sit at a lower opacity so a glance can
+// tell a confirmed victim from an anonymous one.
+const targetLabel = (t) => (t ? unitName(t) : "unknown target");
+const targetOpacity = (t) => (t ? 0.6 : 0.28);
+
 function drawKillMap(points) {
   const host = el("killmap");
   if (!host) return;
@@ -1031,10 +1082,10 @@ function drawKillMap(points) {
       weight: 1,
       color: "#ffffff",
       fillColor: "#c0382e",
-      fillOpacity: 0.55,
+      fillOpacity: targetOpacity(p.targetType),
     })
       .bindTooltip(
-        `${esc(unitName(p.targetType || ""))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
+        `${esc(targetLabel(p.targetType))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
       )
       .addTo(killLayer);
   }
@@ -1088,11 +1139,11 @@ function drawMissionMap(points) {
       weight: 1,
       color: "#ffffff",
       fillColor: SIDE_FILL[p.coalition] || "#7a8494",
-      fillOpacity: 0.6,
+      fillOpacity: targetOpacity(p.targetType),
     })
       .bindTooltip(
         `${esc(playerLabel(p.playerName))}${p.unitType ? " · " + esc(unitName(p.unitType)) : ""} → ` +
-          `${esc(unitName(p.targetType || ""))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
+          `${esc(targetLabel(p.targetType))}${p.weaponType ? " · " + esc(weaponName(p.weaponType)) : ""} · ${clock(p.missionTime)}`
       )
       .addTo(missionLayer);
   }

@@ -1121,3 +1121,31 @@ tr.first-place .name a { color: var(--gold); }
   color: var(--text-faint);
   font-size: 0.8125rem;
 }
+
+/* ---- the opposition strip ---- */
+/* The AI, kept off the leaderboard. Styled quieter than a ranked row on
+   purpose: it is the scale of the war, not a placing anyone is competing for. */
+.opposition { margin-top: 1.1rem; border-top: 1px solid var(--line); padding-top: 0.9rem; }
+.opp-head {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.opposition .note { margin-bottom: 0.7rem; }
+.opp-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.opp-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.8125rem;
+}
+.opp-name { flex: 1 1 8rem; font-weight: 600; }
+.opp-stat { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.opp-stat b { color: var(--text); font-weight: 600; }

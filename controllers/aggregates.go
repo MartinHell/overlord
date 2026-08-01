@@ -858,6 +858,12 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 
 	// Where the kills happened. The victim's position wins because that is
 	// where the thing died; the shooter's position is the fallback.
+	//
+	// LEFT JOIN on targets, deliberately. Two thirds of kills have no target
+	// row at all -- DCS had already deallocated the victim by the time the
+	// event fired -- and an inner join silently dropped every one of them. The
+	// position is on the event either way, so those kills are perfectly
+	// mappable; only the name of what died is missing.
 	var points []models.KillPoint
 	if err := db.Model(&models.Event{}).
 		Scopes(scopeMission(missionID)).
@@ -866,15 +872,15 @@ func GetPlayerProfile(playerID uint, unitType string, missionID *uint) (*models.
 			tunits.type AS target_type,
 			weapons.type AS weapon_type,
 			events.mission_time AS mission_time`).
-		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Joins("LEFT JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
 		Joins("LEFT JOIN weapons ON weapons.weapon_id = events.weapon_id").
 		Joins("JOIN units ON units.unit_id = events.initiator_unit_id").
-		Where(`events.event = 'kill' AND events.player_id = ? AND targets.kind <> ?
-			AND (events.target_lat <> 0 OR events.initiator_lat <> 0)`, playerID, models.ObjectKindScenery).
+		Where(`events.event = 'kill' AND events.player_id = ? AND `+notScenery+`
+			AND (events.target_lat <> 0 OR events.initiator_lat <> 0)`, playerID).
 		Scopes(whereUnitType(unitType)).
 		Order("events.id DESC").
-		Limit(500).
+		Limit(1000).
 		Scan(&points).Error; err != nil {
 		logs.Sugar.Errorf("Failed to load kill points for player %d: %v", playerID, err)
 		return nil, err
@@ -1056,6 +1062,12 @@ func haversineM(lat1, lon1, lat2, lon2 float64) float64 {
 
 // GetKillPoints returns every geolocated kill in scope, both sides, for the
 // mission map. The victim's position wins; the shooter's is the fallback.
+//
+// The targets join is a LEFT JOIN because most kills have no target row. DCS
+// fires the kill event after it has already deallocated the victim, so about
+// two thirds of them name nothing -- but every kill carries coordinates, so
+// they belong on the map regardless. An inner join here was hiding 888 of
+// roughly 1,400 kills, which is why the map used to look so sparse.
 func GetKillPoints(missionID *uint) ([]*models.MapKillPoint, error) {
 	var points []models.MapKillPoint
 
@@ -1069,15 +1081,15 @@ func GetKillPoints(missionID *uint) ([]*models.MapKillPoint, error) {
 			tunits.type AS target_type,
 			weapons.type AS weapon_type,
 			events.mission_time AS mission_time`).
-		Joins("JOIN targets ON targets.target_id = events.target_id").
+		Joins("LEFT JOIN targets ON targets.target_id = events.target_id").
 		Joins("LEFT JOIN players ON players.player_id = events.player_id").
 		Joins("LEFT JOIN units ON units.unit_id = events.initiator_unit_id").
 		Joins("LEFT JOIN units AS tunits ON tunits.unit_id = targets.unit_id").
 		Joins("LEFT JOIN weapons ON weapons.weapon_id = events.weapon_id").
-		Where(`events.event = 'kill' AND targets.kind <> ?
-			AND (events.target_lat <> 0 OR events.initiator_lat <> 0)`, models.ObjectKindScenery).
+		Where(`events.event = 'kill' AND `+notScenery+`
+			AND (events.target_lat <> 0 OR events.initiator_lat <> 0)`).
 		Order("events.id DESC").
-		Limit(1000).
+		Limit(2000).
 		Scan(&points).Error
 	if err != nil {
 		logs.Sugar.Errorf("Failed to load mission kill points: %v", err)

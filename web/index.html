@@ -90,7 +90,9 @@
   <section class="card-panel" id="p-missionmap">
     <div class="phead"><h2>The map</h2></div>
     <p class="note">
-      Every geolocated kill in scope, both sides. Roughly half of kills carry no position and cannot be shown.
+      Every kill in scope, both sides, at the victim's position or the shooter's when that is all DCS gave.
+      Faded dots are kills DCS reported without naming what died — it had already cleared the wreck away by
+      the time the event fired. The position is real; only the victim is anonymous.
     </p>
     <div id="missionmap"></div>
   </section>
@@ -115,9 +117,13 @@
   </section>
 
   <div class="split">
+    <!-- Humans only. The AI is the war, not a rival: three synthetic coalition
+         pilots with thousands of kills between them would bury every real
+         pilot on the board forever. They get their own strip underneath. -->
     <section class="card-panel" id="p-pilots">
       <div class="phead"><h2>Leaderboard</h2></div>
       <div class="tw"><table id="pilots" class="grid"></table></div>
+      <div id="opposition" class="opposition"></div>
     </section>
 
     <section class="card-panel" id="p-traps">
